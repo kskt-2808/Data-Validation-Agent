@@ -4,3 +4,6 @@ frontend/dist/
 __pycache__/
 *.pyc
 .env
+# Written into the repo root by the AI Studio deploy pipeline
+ecosystem.config.js
+/package-lock.json

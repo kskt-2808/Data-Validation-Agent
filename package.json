@@ -1,0 +1,11 @@
+{
+  "name": "newton",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Root delegate for the AI Studio Manager pipeline (Next.js preset, SSR mode), which runs install, build and start at the repository root. start.sh serves the Flask API and the built UI on $PORT.",
+  "scripts": {
+    "postinstall": "npm --prefix frontend ci --no-audit --no-fund",
+    "build": "npm --prefix frontend run build",
+    "start": "./start.sh"
+  }
+}

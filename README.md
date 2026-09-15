@@ -6,10 +6,34 @@ consumption, run-hours and time-weighted averages, per shift.
 
 ## Deploy
 
-Start command (AI Studio Manager, systemd, or by hand):
+### AI Studio Manager
+
+AI Studio Manager has no Flask preset. Its **Next.js preset in SSR mode** is the
+one that keeps a server process running, and it works for any app with root
+`package.json` scripts:
+
+| Setting | Value |
+|---|---|
+| Framework | **Next.js** (Create React App and Vite are static-only: the API would 404) |
+| Mode | **SSR / Server-Side** |
+| Install command | `npm install --force` (default) |
+| Build command | `npm run build` (default) |
+| Start command | `npm start` (default) |
+| Repository path | empty |
+
+The pipeline runs install → build in the repo root, then starts `npm start`
+under pm2 with `PORT` set to a free port in 9000–10000, and puts an HTTPS
+domain in front of it with nginx. `npm start` runs `start.sh`, which reads that
+`PORT`. Register the **assigned domain** (not a port) in Launchpad.
+
+The deploy server keeps its own clone of the repo and does not pull on a
+first Deploy. After pushing, use **Update deployment** (it pulls, then
+redeploys), or the deploy will build an old or empty checkout.
+
+### Anywhere else
 
 ```bash
-./start.sh        # serves on port 7777; override with PORT=...
+./start.sh        # serves on $PORT, default 7777
 ```
 
 `start.sh` creates `.venv` and installs Python dependencies, rebuilds the
@@ -17,8 +41,6 @@ frontend when anything in `frontend/` is newer than the last build, and runs
 gunicorn with a 300 s timeout (large reports take minutes). The built frontend
 is not committed, so a deploy always serves the current source. Needs Python
 3.12+ and Node 20+ on the host.
-
-Register `http://<host>:7777/` as the application URL in Launchpad.
 
 ## Develop
 
