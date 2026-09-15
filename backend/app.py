@@ -1,0 +1,116 @@
+"""Newton — Data Validation Agent. Flask API plus the built React frontend."""
+from __future__ import annotations
+
+import hashlib
+import os
+import time
+from io import BytesIO
+from pathlib import Path
+
+from flask import Flask, jsonify, request, send_file, send_from_directory
+
+import iosense
+from recipes import RECIPES
+from report import build_workbook, filename
+from validation import SITE_TZ, run_validation
+
+DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+DEVICE_CACHE_TTL_S = 300
+
+app = Flask(__name__, static_folder=None)
+_device_cache: dict[str, tuple[float, list[dict]]] = {}
+
+
+def _client() -> iosense.Client:
+    token = request.headers.get("Authorization", "").strip()
+    # BEARER_TOKEN is a local-development fallback only; in Launchpad the
+    # frontend sends the signed-in user's own token.
+    token = token or os.environ.get("BEARER_TOKEN", "").strip()
+    if not token:
+        raise iosense.AuthError("Not signed in. Open Newton from Launchpad.")
+    return iosense.Client(token)
+
+
+def _devices(client: iosense.Client) -> list[dict]:
+    key = hashlib.sha256(client.token.encode()).hexdigest()
+    now = time.time()
+    hit = _device_cache.get(key)
+    if hit and now - hit[0] < DEVICE_CACHE_TTL_S:
+        return hit[1]
+    devices = client.list_devices()
+    for k in [k for k, (ts, _) in _device_cache.items() if now - ts >= DEVICE_CACHE_TTL_S]:
+        del _device_cache[k]
+    _device_cache[key] = (now, devices)
+    return devices
+
+
+@app.errorhandler(iosense.AuthError)
+def _auth_error(err):
+    return jsonify(error=str(err)), 401
+
+
+@app.errorhandler(iosense.UpstreamError)
+def _upstream_error(err):
+    return jsonify(error=f"IOsense platform error: {err}"), 502
+
+
+@app.errorhandler(ValueError)
+def _bad_request(err):
+    return jsonify(error=str(err)), 400
+
+
+@app.get("/api/health")
+def health():
+    return jsonify(ok=True)
+
+
+@app.post("/api/auth/sso")
+def auth_sso():
+    sso = (request.get_json(silent=True) or {}).get("token")
+    if not sso:
+        raise ValueError("Missing 'token'")
+    return jsonify(token=iosense.exchange_sso_token(sso))
+
+
+@app.get("/api/devices")
+def devices():
+    return jsonify(devices=_devices(_client()))
+
+
+@app.get("/api/recipes")
+def recipes():
+    return jsonify(recipes=RECIPES, timezone=SITE_TZ.key)
+
+
+@app.post("/api/validate")
+def validate():
+    client = _client()
+    body = request.get_json(silent=True) or {}
+    devices_by_id = {d["devID"]: d for d in _devices(client)}
+    return jsonify(run_validation(client, devices_by_id, body))
+
+
+@app.post("/api/export")
+def export():
+    result = request.get_json(silent=True) or {}
+    if not isinstance(result.get("rows"), list) or "recipe" not in result:
+        raise ValueError("Send a validation result to export")
+    return send_file(BytesIO(build_workbook(result)), as_attachment=True,
+                     download_name=filename(result),
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+@app.get("/", defaults={"path": ""})
+@app.get("/<path:path>")
+def frontend(path: str):
+    if path.startswith("api/"):
+        return jsonify(error="Not found"), 404
+    if path and (DIST / path).is_file():
+        return send_from_directory(DIST, path)
+    if (DIST / "index.html").is_file():
+        return send_from_directory(DIST, "index.html")
+    return "Frontend not built. Run: cd frontend && npm install && npm run build", 503
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 7777)))
