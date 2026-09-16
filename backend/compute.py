@@ -148,3 +148,27 @@ def average_value(points: list[Point], start_ms: int, end_ms: int,
         "max": max(readings),
         "samples": len(readings),
     }
+
+
+def integrate(points: list[Point], start_ms: int, end_ms: int, m: float = 1.0, c: float = 0.0,
+              max_gap_ms: int = 15 * 60_000, rate_seconds: float = 3600.0) -> dict | None:
+    """Total quantity from a rate: each reading multiplied by how long it held.
+
+    rate_seconds is the rate's time base — 3600 for m3/h, 60 for L/min — so a
+    flow of 12 m3/h held for 30 minutes contributes 6 m3. Unknown time adds
+    nothing, and is reported so a partial shift is not mistaken for a low total.
+    """
+    segments = held_segments(points, start_ms, end_ms, max_gap_ms)
+    if not segments:
+        return None
+    known = sum(b - a for a, b, _ in segments)
+    total = sum((v * m + c) * ((b - a) / 1000 / rate_seconds) for a, b, v in segments)
+    rates = [v * m + c for _, _, v in segments]
+    return {
+        "total": total,
+        "min": min(rates),
+        "max": max(rates),
+        "known_ms": known,
+        "unknown_ms": (end_ms - start_ms) - known,
+        "samples": sum(1 for t, _ in points if start_ms <= t < end_ms),
+    }

@@ -75,6 +75,9 @@ def _run_params(formula: dict, body: dict) -> dict:
 
 def _param_value(spec: dict, raw):
     if raw in (None, ""):
+        # A default satisfies "required": the caller may simply not have said.
+        if spec.get("default") not in (None, ""):
+            return spec["default"]
         if spec.get("required"):
             raise ValueError(f"'{spec['label']}' is required")
         return spec.get("default")

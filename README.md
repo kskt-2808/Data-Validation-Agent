@@ -93,25 +93,68 @@ sends the signed-in user's own token on every request.
 | API + static frontend | `backend/app.py` |
 | UI | `frontend/src/` |
 
-### Adding a calculation
+### Adding a formula
 
-Formulas live in `backend/formulas.json`: label, formula, ledger columns and the
-parameters they need. The UI renders whatever is declared there, so a formula
-that reuses an existing `compute` kind (`delta`, `threshold_time`, `mean`,
-`time_weighted_mean`, `availability`, `load_factor`) is a JSON edit only. A new
-kind also needs one evaluator function in `formulas.py`.
+Formulas live in `backend/formulas.json`. The UI renders whatever is declared
+there, so a formula that reuses an existing `compute` kind needs **no code** —
+add an entry, push, Update deployment.
 
-| Formula | Formula |
-|---|---|
-| Energy Consumption | Δ = (Last DP − First DP) × m |
-| Run-Hours | Σ time intervals where reading ≥ threshold |
-| Average Value | Σ readings ÷ N |
-| Time-Weighted Average | Σ(reading × interval) ÷ Σ interval |
-| OEE Availability | (Run-Hours ÷ Planned Hours) × 100 |
-| Load Factor | (Average ÷ Peak) × 100 |
+Compute kinds available today:
 
-Specific Energy Consumption is registered but unavailable: it needs a
-production-output source Newton cannot select yet.
+| kind | what it does | used by |
+|---|---|---|
+| `delta` | last reading − first reading, × m | energy or water totalisers |
+| `threshold_time` | time at or above a per-device threshold | run-hours |
+| `mean` | Σ readings ÷ N | average current, PF |
+| `time_weighted_mean` | Σ(reading × interval) ÷ Σ interval | uneven reporting |
+| `integrate` | Σ(rate × interval) | volume from a flow rate |
+| `availability` | run-hours ÷ planned hours × 100 | OEE |
+| `load_factor` | average ÷ peak × 100 | demand |
+
+A minimal entry — water totaliser, reusing `delta`:
+
+```json
+{
+  "id": "water_consumption",
+  "group": "Water",
+  "label": "Water Consumption (Last DP − First DP)",
+  "compute": "delta",
+  "available": true,
+  "expression": "Δ = (Last DP − First DP) × m",
+  "method": "Last valid reading of the shift minus the first, times m. Readings below 0 are dropped as the meter's no-reading sentinel.",
+  "aggregate": "sum",
+  "unit": {"source": "sensor", "convertible": true},
+  "labels": {"total": "Total water", "avg": "Average per shift", "peak": "Peak shift"},
+  "columns": [
+    {"key": "first_value", "label": "First Point (DP1)", "type": "number", "timeKey": "first_time"},
+    {"key": "last_value", "label": "Last Point (DP2)", "type": "number", "timeKey": "last_time"},
+    {"key": "raw_delta", "label": "Raw Delta", "type": "number"},
+    {"key": "factor", "label": "Factor", "type": "factor"},
+    {"key": "value", "label": "Computed Output", "type": "output"}
+  ]
+}
+```
+
+Fields: `unit.source` is `sensor`, `hours`, `percent` or `label` (named by the
+operator); `aggregate` is `sum` or `mean`; `params` entries declare extra inputs
+with `scope` `run` or `target`, `type` `number`, `text` or `unit`, and are
+rendered by the UI automatically. Output unit and gap tolerance are added for
+you where they apply.
+
+A genuinely new calculation also needs one evaluator function in `formulas.py`
+and an entry in `EVALUATORS` — `_integrate` is the shortest example.
+
+### Testing a formula
+
+1. **Unit-test the maths** with numbers you can check by hand, in
+   `backend/tests/test_compute.py`. `Integrate` is a short example: a rate of
+   12 m³/h held for 30 minutes must total 6 m³.
+2. **Test the whole run** in `backend/tests/test_validation.py` against the
+   saved fixtures, so a formula is exercised end to end without the platform.
+3. `cd backend && ../.venv/bin/python -m unittest discover tests`
+4. **Check it against reality**: run it in the app on one device for one shift,
+   and verify the ledger's DP1/DP2 and factor give the output by hand. The
+   Method sheet of the Excel export states the rule that was applied.
 
 ### Rules every report follows
 

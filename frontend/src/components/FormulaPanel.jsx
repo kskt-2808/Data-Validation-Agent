@@ -64,6 +64,14 @@ export default function FormulaPanel({
                       </option>
                     ))}
                   </select>
+                ) : spec.type === "text" ? (
+                  <input
+                    type="text"
+                    maxLength={24}
+                    placeholder={spec.placeholder || "e.g. m3"}
+                    value={runParams[spec.key] ?? ""}
+                    onChange={(e) => setRunParams((p) => ({ ...p, [spec.key]: e.target.value }))}
+                  />
                 ) : (
                   <input
                     type="number"

@@ -10,6 +10,7 @@ const CARD_COPY = {
   time_weighted_avg: { title: "Trend Consistency", blurb: "Weight each reading by how long it actually held.", Icon: Trend },
   availability_ratio: { title: "OEE Availability", blurb: "Run-hours measured against planned shift hours.", Icon: Gauge },
   load_factor: { title: "Load Factor", blurb: "Average demand against the peak of the shift.", Icon: Trend },
+  flow_volume: { title: "Flow Volume", blurb: "Volume from a flow rate, integrated over the shift.", Icon: Database },
 };
 
 // Carousel order is a product decision, not the registry's: energy validation is

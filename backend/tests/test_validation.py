@@ -161,3 +161,51 @@ class RunValidation(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WaterFormula(unittest.TestCase):
+    """The D6 fixture stands in for a flow meter reading m3/h."""
+
+    def setUp(self):
+        self.client = FakeClient()
+
+    def test_flow_volume_integrates_the_shift(self):
+        body = request(formula="flow_volume", to="2026-09-14", rateBasisSeconds=3600,
+                       outputUnitLabel="m3", targets=[{"devID": "EVOEM_C1", "sensor": "D6"}])
+        row = next(r for r in run_validation(self.client, DEVICES, body)["rows"]
+                   if r["date"] == "2026-09-14")
+        self.assertEqual(row["status"], "PASS")
+        self.assertEqual(row["unit"], "m3")                       # from the label, not the sensor
+        self.assertGreater(row["value"], 0)
+        self.assertAlmostEqual(row["known_hours"] + row["unknown_hours"], 24.0)
+
+    def test_rate_basis_scales_the_total(self):
+        def total(basis):
+            body = request(formula="flow_volume", to="2026-09-14", rateBasisSeconds=basis,
+                           targets=[{"devID": "EVOEM_C1", "sensor": "D6"}])
+            return next(r for r in run_validation(self.client, DEVICES, body)["rows"]
+                        if r["date"] == "2026-09-14")["value"]
+        self.assertAlmostEqual(total(60), total(3600) * 60)       # per-minute vs per-hour
+
+    def test_unit_falls_back_to_the_sensor_when_no_label(self):
+        body = request(formula="flow_volume", to="2026-09-14",
+                       targets=[{"devID": "EVOEM_C1", "sensor": "D6"}])
+        row = next(r for r in run_validation(self.client, DEVICES, body)["rows"]
+                   if r["date"] == "2026-09-14")
+        self.assertEqual(row["unit"], "A")
+
+
+class ParameterDefaults(unittest.TestCase):
+    def setUp(self):
+        self.client = FakeClient()
+
+    def test_a_default_satisfies_a_required_parameter(self):
+        body = request(formula="flow_volume", to="2026-09-14",
+                       targets=[{"devID": "EVOEM_C1", "sensor": "D6"}])
+        result = run_validation(self.client, DEVICES, body)          # no rateBasisSeconds sent
+        self.assertEqual(result["params"]["rateBasisSeconds"], 3600)
+
+    def test_a_required_parameter_without_a_default_is_still_enforced(self):
+        with self.assertRaisesRegex(ValueError, "threshold"):
+            run_validation(self.client, DEVICES, request(
+                formula="run_hours", targets=[{"devID": "EVOEM_C1", "sensor": "D6"}]))

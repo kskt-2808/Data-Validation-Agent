@@ -7,8 +7,8 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from compute import (HOUR_MS, clean, consumption_delta, run_hours, shift_windows,  # noqa: E402
-                     time_weighted_average)
+from compute import (HOUR_MS, clean, consumption_delta, integrate, run_hours,  # noqa: E402
+                     shift_windows, time_weighted_average)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 IST = ZoneInfo("Asia/Kolkata")
@@ -108,6 +108,31 @@ class TimeWeightedAverage(unittest.TestCase):
         self.assertAlmostEqual(r["average"], 10.0)
         self.assertEqual(r["unknown_ms"], 45 * MIN)
 
+
+
+class Integrate(unittest.TestCase):
+    def test_a_rate_held_for_half_an_hour(self):
+        # 12 m3/h from 0-30 min, 0 after: 6 m3.
+        points = [(0, 12.0), (30 * MIN, 0.0)]
+        r = integrate(points, 0, 60 * MIN, max_gap_ms=60 * MIN, rate_seconds=3600)
+        self.assertAlmostEqual(r["total"], 6.0)
+
+    def test_per_minute_rates(self):
+        # 10 L/min for the whole hour: 600 L.
+        r = integrate([(0, 10.0)], 0, 60 * MIN, max_gap_ms=60 * MIN, rate_seconds=60)
+        self.assertAlmostEqual(r["total"], 600.0)
+
+    def test_calibration_applies_to_the_rate(self):
+        r = integrate([(0, 12000.0)], 0, 60 * MIN, m=0.001, max_gap_ms=60 * MIN, rate_seconds=3600)
+        self.assertAlmostEqual(r["total"], 12.0)
+
+    def test_unknown_time_adds_nothing_and_is_reported(self):
+        r = integrate([(0, 60.0)], 0, 60 * MIN, max_gap_ms=15 * MIN, rate_seconds=3600)
+        self.assertAlmostEqual(r["total"], 15.0)        # only the 15 min it covers
+        self.assertEqual(r["unknown_ms"], 45 * MIN)
+
+    def test_no_readings_is_no_data(self):
+        self.assertIsNone(integrate([], 0, 60 * MIN))
 
 if __name__ == "__main__":
     unittest.main()

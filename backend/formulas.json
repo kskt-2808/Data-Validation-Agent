@@ -365,6 +365,78 @@
       ]
     },
     {
+      "id": "flow_volume",
+      "group": "Water",
+      "label": "Flow Volume (integrated flow rate)",
+      "compute": "integrate",
+      "available": true,
+      "expression": "Volume = \u03a3(flow rate \u00d7 interval)",
+      "method": "For meters that report an instantaneous rate rather than a totaliser. Each calibrated reading is multiplied by how long it held, capped at the gap tolerance, and the results are added up. Set the rate basis to match the sensor: 3600 for a per-hour rate (m3/h), 60 for per-minute (L/min). Unknown time contributes nothing and is reported separately, so a shift with gaps reads low rather than silently wrong.",
+      "aggregate": "sum",
+      "unit": {
+        "source": "label",
+        "convertible": false
+      },
+      "labels": {
+        "total": "Total volume",
+        "avg": "Average per shift",
+        "peak": "Peak shift"
+      },
+      "params": [
+        {
+          "key": "rateBasisSeconds",
+          "scope": "run",
+          "type": "number",
+          "label": "Rate basis (seconds)",
+          "default": 3600,
+          "min": 1,
+          "max": 86400,
+          "required": true,
+          "help": "The time the rate is measured over: 3600 for m3/h or L/h, 60 for L/min, 1 for L/s."
+        },
+        {
+          "key": "outputUnitLabel",
+          "scope": "run",
+          "type": "text",
+          "label": "Volume unit",
+          "default": "",
+          "help": "What the total is in, once the time part is removed \u2014 m3 for m3/h, L for L/min. Shown on the report."
+        }
+      ],
+      "columns": [
+        {
+          "key": "value",
+          "label": "Volume",
+          "type": "output"
+        },
+        {
+          "key": "min",
+          "label": "Min rate",
+          "type": "number"
+        },
+        {
+          "key": "max",
+          "label": "Max rate",
+          "type": "number"
+        },
+        {
+          "key": "known_hours",
+          "label": "Known Hours",
+          "type": "number"
+        },
+        {
+          "key": "unknown_hours",
+          "label": "Unknown Hours",
+          "type": "number"
+        },
+        {
+          "key": "samples",
+          "label": "Samples",
+          "type": "integer"
+        }
+      ]
+    },
+    {
       "id": "specific_energy",
       "group": "EMS / Future",
       "label": "Specific Energy Consumption (kWh \u00f7 Output Units)",

@@ -10,8 +10,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from compute import (HOUR_MS, average_value, consumption_delta, coverage, run_hours,
-                     time_weighted_average)
+from compute import (HOUR_MS, average_value, consumption_delta, coverage, integrate,
+                     run_hours, time_weighted_average)
 
 _REGISTRY = json.loads((Path(__file__).parent / "formulas.json").read_text())
 UNIT_CONVERSIONS = _REGISTRY["unitConversions"]
@@ -19,7 +19,7 @@ UNIT_CONVERSIONS = _REGISTRY["unitConversions"]
 COVERAGE_WARN = 0.90
 STATUSES = ("PASS", "WARN", "NO_DATA", "ERROR")
 # Kinds whose answer depends on how long a single reading is trusted.
-GAP_KINDS = ("delta", "threshold_time", "time_weighted_mean", "availability")
+GAP_KINDS = ("delta", "threshold_time", "time_weighted_mean", "availability", "integrate")
 
 _HEAD = [
     {"key": "date", "label": "Shift Date", "type": "text"},
@@ -61,18 +61,22 @@ FORMULAS = [_publish(r) for r in _REGISTRY["formulas"]]
 FORMULAS_BY_ID = {r["id"]: r for r in FORMULAS}
 
 
-def base_unit(formula: dict, target: dict) -> str:
+def base_unit(formula: dict, target: dict, params: dict | None = None) -> str:
+    params = params or {}
     source = (formula.get("unit") or {}).get("source")
     if source == "hours":
         return "h"
     if source == "percent":
         return "%"
+    if source == "label":
+        # The sensor reads a rate; the total is in whatever the operator names.
+        return params.get("outputUnitLabel") or target["unit"]
     return target["unit"]
 
 
 def resolve_unit(formula: dict, target: dict, params: dict) -> tuple[str, float]:
     """(unit the report shows, divisor that converts the native value into it)."""
-    base = base_unit(formula, target)
+    base = base_unit(formula, target, params)
     chosen = params.get("outputUnit")
     if not chosen or chosen == base:
         return base, 1.0
@@ -195,7 +199,24 @@ def _load_factor(points, start_ms, end_ms, target, params):
     }
 
 
+def _integrate(points, start_ms, end_ms, target, params):
+    result = integrate(points, start_ms, end_ms, target["m"], target["c"],
+                       params["maxGapMs"], params.get("rateBasisSeconds") or 3600)
+    if result is None:
+        return {"status": "NO_DATA", "notes": ["No readings in the shift"]}
+    notes = _coverage_note(points, start_ms, end_ms, params, result["unknown_ms"])
+    return {
+        "value": result["total"],
+        "min": result["min"], "max": result["max"],
+        "known_hours": result["known_ms"] / HOUR_MS,
+        "unknown_hours": result["unknown_ms"] / HOUR_MS,
+        "samples": result["samples"],
+        **_status(notes),
+    }
+
+
 EVALUATORS = {
+    "integrate": _integrate,
     "delta": _delta,
     "threshold_time": _threshold_time,
     "mean": _mean,
