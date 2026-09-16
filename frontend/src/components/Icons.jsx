@@ -2,10 +2,10 @@
 const S = { fill: "none", stroke: "currentColor", strokeWidth: 1.6, strokeLinecap: "round", strokeLinejoin: "round" };
 
 export function Logo({ className = "" }) {
+  // The iosense mark: two hollow peaks whose inner legs taper into one deep point.
   return (
-    <svg viewBox="0 0 48 44" className={className} aria-hidden="true">
-      <path d="M4 40 20 6l8 16" fill="none" stroke="currentColor" strokeWidth="5" strokeLinejoin="round" />
-      <path d="M20 40 36 6l8 34" fill="none" stroke="currentColor" strokeWidth="5" strokeLinejoin="round" opacity="0.85" />
+    <svg viewBox="0 0 200 200" className={className} aria-hidden="true">
+      <path d="M68 24 L28 122 L54 132 L68 58 L100 166 L86 31 Z M132 24 L172 122 L146 132 L132 58 L100 166 L114 31 Z" fill="currentColor" />
     </svg>
   );
 }

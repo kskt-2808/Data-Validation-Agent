@@ -7,6 +7,7 @@
   --line-soft: #eff3fb;
   --bg: #ffffff;
   --bg-soft: #f7f9fe;
+  --brand: #2f52d8;
   --blue: #1d5cff;
   --blue-dark: #0f44e0;
   --blue-tint: #e9effe;
@@ -38,7 +39,7 @@ svg { display: block; }
 /* Shell */
 .app { min-height: 100vh; display: flex; flex-direction: column; }
 .topbar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 30px; background: rgba(255, 255, 255, 0.88); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
-.brand-mark { width: 38px; height: 34px; color: var(--blue); }
+.brand-mark { width: 34px; height: 34px; color: var(--brand); }
 .stepper { display: flex; align-items: center; gap: 6px; }
 .step-tab { display: inline-flex; align-items: center; gap: 8px; font: inherit; font-size: 13px; font-weight: 600; padding: 6px 10px; border: 0; border-radius: 999px; background: none; color: var(--muted); cursor: pointer; }
 .step-tab .num { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid var(--line); background: #fff; font-size: 12px; color: var(--muted); }
@@ -57,7 +58,7 @@ svg { display: block; }
 /* Page 1 — hero */
 .intro { display: flex; flex-direction: column; }
 .hero { position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; padding: 46px 24px 34px; background: radial-gradient(120% 80% at 50% 0%, #ffffff 0%, #f7f9ff 55%, #f2f5ff 100%); }
-.hero-watermark { position: absolute; left: -110px; top: 18px; width: 430px; height: 390px; color: var(--blue); opacity: 0.05; pointer-events: none; }
+.hero-watermark { position: absolute; left: -110px; top: 18px; width: 430px; height: 390px; color: var(--brand); opacity: 0.05; pointer-events: none; }
 .hero > :not(.hero-watermark) { position: relative; }
 .eyebrow { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.38em; text-transform: uppercase; color: var(--blue); }
 .hero h1 { display: flex; flex-direction: column; margin: 14px 0 0; font-size: clamp(40px, 5vw, 64px); line-height: 1.04; font-weight: 700; letter-spacing: -0.03em; text-align: center; }
