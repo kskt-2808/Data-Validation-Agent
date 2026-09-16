@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Arrow, Bars, Bolt, Database, Document, Gauge, Grid, Layers, Lock, Logo, Pulse, ShieldCheck, Target, Trend } from "./Icons.jsx";
 
 // Cards come from the recipe registry, so what the page advertises is what the
@@ -26,23 +26,36 @@ export default function Intro({ recipes, onStart, onPick }) {
   const [active, setActive] = useState(0);
   const step = (delta) => setActive((i) => (i + delta + cards.length) % cards.length);
   const trackRef = useRef(null);
+  const viewportRef = useRef(null);
+  const [offset, setOffset] = useState(0);
 
-  // Keep the highlighted card in view when it changes, so the arrows and dots
-  // both work on a track that holds more cards than fit.
-  useEffect(() => {
-    const card = trackRef.current?.children[active];
-    card?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
-  }, [active]);
+  // The track slides as one piece, so every card can sit dead centre — including
+  // the first and last, which a scrolling track can never reach.
+  useLayoutEffect(() => {
+    const centre = () => {
+      const card = trackRef.current?.children[active];
+      const viewport = viewportRef.current;
+      if (!card || !viewport) return;
+      setOffset(viewport.clientWidth / 2 - (card.offsetLeft + card.offsetWidth / 2));
+    };
+    // Measure after layout settles, or a flex viewport reports its content width.
+    const frame = requestAnimationFrame(centre);
+    centre();
+    window.addEventListener("resize", centre);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("resize", centre);
+    };
+  }, [active, cards.length]);
 
   return (
     <div className="intro">
       <section className="hero">
         <Logo className="hero-watermark" />
-        <p className="eyebrow">Newton</p>
-        <h1>
-          <span>Validation.</span>
-          <span className="gradient">Reimagined.</span>
-        </h1>
+        <h1>Newton</h1>
+        <p className="tagline">
+          Validation. <span className="gradient">Reimagined.</span>
+        </p>
 
         <ul className="trust">
           <li>
@@ -90,7 +103,8 @@ export default function Intro({ recipes, onStart, onPick }) {
             <button className="round-btn" type="button" aria-label="Previous" onClick={() => step(-1)}>
               <Arrow />
             </button>
-            <div className="track" ref={trackRef}>
+            <div className="viewport" ref={viewportRef}>
+              <div className="track" ref={trackRef} style={{ transform: `translateX(${offset}px)` }}>
               {cards.map((card, i) => (
                 <button
                   key={card.id}
@@ -106,6 +120,7 @@ export default function Intro({ recipes, onStart, onPick }) {
                   <span className="blurb">{card.blurb}</span>
                 </button>
               ))}
+              </div>
             </div>
             <button className="round-btn" type="button" aria-label="Next" onClick={() => step(1)}>
               <Arrow />
