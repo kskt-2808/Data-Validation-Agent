@@ -6,7 +6,7 @@ export default function Results({ result, onAuthLost }) {
   const [groupBy, setGroupBy] = useState("date");
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
-  const { recipe, params } = result;
+  const { formula, params } = result;
 
   async function download() {
     setExporting(true);
@@ -32,7 +32,7 @@ export default function Results({ result, onAuthLost }) {
     <section className="card results">
       <div className="results-head">
         <div>
-          <h2>{recipe.label}</h2>
+          <h2>{formula.label}</h2>
           <p className="muted small">
             {fmtDate(params.from)} to {fmtDate(params.to)} · shift {params.shift} ({result.timezone})
           </p>
@@ -45,7 +45,7 @@ export default function Results({ result, onAuthLost }) {
 
       <h3>Audit summary</h3>
       {result.summary.map((g) => (
-        <SummaryGroup key={g.unit} group={g} recipe={recipe} showUnit={result.summary.length > 1} />
+        <SummaryGroup key={g.unit} group={g} formula={formula} showUnit={result.summary.length > 1} />
       ))}
 
       <div className="ledger-head">
@@ -60,12 +60,12 @@ export default function Results({ result, onAuthLost }) {
           </label>
         </div>
       </div>
-      <Ledger rows={result.rows} columns={recipe.columns} groupBy={groupBy} />
+      <Ledger rows={result.rows} columns={formula.columns} groupBy={groupBy} />
     </section>
   );
 }
 
-function SummaryGroup({ group, recipe, showUnit }) {
+function SummaryGroup({ group, formula, showUnit }) {
   const unit = group.unit ? ` ${group.unit}` : "";
   const { PASS, WARN, NO_DATA, ERROR } = group.counts;
   const peak = group.peak;
@@ -73,14 +73,14 @@ function SummaryGroup({ group, recipe, showUnit }) {
     <>
       {showUnit && <p className="muted small group-label">Figures in {group.unit || "(no unit)"}</p>}
       <div className="cards">
-        {recipe.aggregate === "sum" && <Card label={recipe.labels.total} value={group.total == null ? "—" : `${fmtNumber(group.total)}${unit}`} />}
+        {formula.aggregate === "sum" && <Card label={formula.labels.total} value={group.total == null ? "—" : `${fmtNumber(group.total)}${unit}`} />}
         <Card
-          label={recipe.labels.avg}
+          label={formula.labels.avg}
           value={group.mean == null ? "—" : `${fmtNumber(group.mean)}${unit}`}
           sub={`across ${group.valueCount} shift${group.valueCount === 1 ? "" : "s"} with data`}
         />
         <Card
-          label={recipe.labels.peak}
+          label={formula.labels.peak}
           value={peak ? `${fmtNumber(peak.value)}${unit}` : "—"}
           sub={peak ? `${fmtDate(peak.date)} · ${peak.devID} / ${peak.sensor}` : ""}
         />

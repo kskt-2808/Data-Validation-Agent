@@ -4,7 +4,7 @@ import { isNumeric } from "./format.jsx";
 import Intro from "./components/Intro.jsx";
 import { Logo } from "./components/Icons.jsx";
 import MultiSelect from "./components/MultiSelect.jsx";
-import RecipePanel from "./components/RecipePanel.jsx";
+import FormulaPanel from "./components/FormulaPanel.jsx";
 import Results from "./components/Results.jsx";
 import Feedback from "./components/Feedback.jsx";
 
@@ -28,7 +28,7 @@ function daysAgo(n) {
 export default function Newton({ onAuthLost }) {
   const [page, setPage] = useState("intro");
   const [devices, setDevices] = useState(null);
-  const [recipes, setRecipes] = useState([]);
+  const [formulas, setFormulas] = useState([]);
   const [unitConversions, setUnitConversions] = useState({});
   const [timezone, setTimezone] = useState("");
   const [loadError, setLoadError] = useState("");
@@ -39,7 +39,7 @@ export default function Newton({ onAuthLost }) {
   const [to, setTo] = useState(daysAgo(1));
   const [shiftStart, setShiftStart] = useState("07:00");
   const [shiftEnd, setShiftEnd] = useState("07:00");
-  const [recipeId, setRecipeId] = useState("consumption_delta");
+  const [formulaId, setFormulaId] = useState("consumption_delta");
   const [runParams, setRunParams] = useState({});
   const [targetParams, setTargetParams] = useState({});
 
@@ -50,30 +50,30 @@ export default function Newton({ onAuthLost }) {
   const fail = (err, setter) => (err instanceof AuthError ? onAuthLost(err.message) : setter(err.message));
 
   useEffect(() => {
-    Promise.all([api.devices(), api.recipes()])
+    Promise.all([api.devices(), api.formulas()])
       .then(([d, r]) => {
         setDevices(d.devices);
-        setRecipes(r.recipes);
+        setFormulas(r.formulas);
         setUnitConversions(r.unitConversions || {});
         setTimezone(r.timezone);
       })
       .catch((err) => fail(err, setLoadError));
   }, []);
 
-  const recipe = recipes.find((r) => r.id === recipeId);
+  const formula = formulas.find((r) => r.id === formulaId);
 
-  // Parameters come from the recipe registry, so switching recipe re-renders the
-  // inputs; values shared by both recipes (gap tolerance) are kept.
+  // Parameters come from the formula registry, so switching formula re-renders the
+  // inputs; values shared by both formulas (gap tolerance) are kept.
   useEffect(() => {
-    if (!recipe) return;
+    if (!formula) return;
     setRunParams((prev) => {
       const next = {};
-      for (const spec of recipe.params.filter((p) => p.scope === "run")) {
+      for (const spec of formula.params.filter((p) => p.scope === "run")) {
         next[spec.key] = prev[spec.key] ?? (spec.default ?? "");
       }
       return next;
     });
-  }, [recipeId, recipes.length]);
+  }, [formulaId, formulas.length]);
 
   const deviceById = useMemo(() => new Map((devices || []).map((d) => [d.devID, d])), [devices]);
 
@@ -121,17 +121,17 @@ export default function Newton({ onAuthLost }) {
 
   // A conversion is only offered when every selected sensor shares one unit.
   const sensorUnits = [...new Set(targets.map((t) => t.sensor.unit || ""))];
-  const unitSource = recipe?.unit?.source;
+  const unitSource = formula?.unit?.source;
   const baseUnit =
     unitSource === "hours" ? "h" : unitSource === "percent" ? "%" : sensorUnits.length === 1 ? sensorUnits[0] : null;
   const unitOptions = baseUnit ? Object.keys(unitConversions[baseUnit] || {}) : [];
   const mixedUnits = unitSource === "sensor" && sensorUnits.length > 1;
 
-  const runSpecs = recipe?.params.filter((p) => p.scope === "run") || [];
-  const targetSpecs = recipe?.params.filter((p) => p.scope === "target") || [];
+  const runSpecs = formula?.params.filter((p) => p.scope === "run") || [];
+  const targetSpecs = formula?.params.filter((p) => p.scope === "target") || [];
 
   const blocker = (() => {
-    if (!recipe) return "Loading recipes…";
+    if (!formula) return "Loading formulas…";
     if (!targets.length) return "Choose at least one device and a sensor it has.";
     if (!from || !to) return "Pick a date range.";
     if (to < from) return "The end date is before the start date.";
@@ -163,7 +163,7 @@ export default function Newton({ onAuthLost }) {
     setRunning(true);
     setRunError("");
     try {
-      const body = { recipe: recipeId, from, to, shiftStart, shiftEnd, targets: [] };
+      const body = { formula: formulaId, from, to, shiftStart, shiftEnd, targets: [] };
       for (const spec of runSpecs) {
         const value = runParams[spec.key];
         if (value === "" || value == null) continue;
@@ -215,10 +215,10 @@ export default function Newton({ onAuthLost }) {
 
       {page === "intro" && (
         <Intro
-          recipes={recipes}
+          formulas={formulas}
           onStart={() => setPage("setup")}
           onPick={(id) => {
-            setRecipeId(id);
+            setFormulaId(id);
             setPage("setup");
           }}
         />
@@ -295,11 +295,11 @@ export default function Newton({ onAuthLost }) {
             </p>
           </section>
 
-          {recipe && (
-            <RecipePanel
-              recipes={recipes}
-              recipe={recipe}
-              onRecipe={setRecipeId}
+          {formula && (
+            <FormulaPanel
+              formulas={formulas}
+              formula={formula}
+              onFormula={setFormulaId}
               targets={targets}
               targetParams={targetParams}
               setTargetParams={setTargetParams}

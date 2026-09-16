@@ -23,13 +23,13 @@ class Record(unittest.TestCase):
     def test_stores_rating_comment_and_run_context(self):
         entry = feedback.record({
             "rating": 4, "comment": "  add specific energy  ",
-            "context": {"recipe": "consumption_delta", "from": "2026-09-01", "to": "2026-09-07",
+            "context": {"formula": "consumption_delta", "from": "2026-09-01", "to": "2026-09-07",
                         "shift": "07:00 – 07:00", "targets": 3, "shifts": 21,
                         "counts": {"PASS": 18, "WARN": 1, "NO_DATA": 2, "ERROR": 0}},
         }, token="Bearer abc")
         self.assertEqual(entry["rating"], 4)
         self.assertEqual(entry["comment"], "add specific energy")
-        self.assertEqual(entry["recipe"], "consumption_delta")
+        self.assertEqual(entry["formula"], "consumption_delta")
         self.assertEqual((entry["pass"], entry["noData"]), (18, 2))
         self.assertEqual(len(entry["submitter"]), 8)
         self.assertNotIn("abc", json.dumps(entry))          # never the token itself

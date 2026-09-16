@@ -28,7 +28,7 @@ WEBHOOK_URL = os.environ.get("FEEDBACK_WEBHOOK_URL", "").strip()
 ADMIN_KEY = os.environ.get("FEEDBACK_ADMIN_KEY", "").strip()
 MAX_COMMENT = 2000
 FACES = {1: "😞 unhappy", 2: "🙁 poor", 3: "😐 neutral", 4: "🙂 good", 5: "😀 great"}
-COLUMNS = ("time", "rating", "comment", "recipe", "from", "to", "shift", "targets",
+COLUMNS = ("time", "rating", "comment", "formula", "from", "to", "shift", "targets",
            "shifts", "pass", "warn", "noData", "error", "submitter")
 
 _lock = threading.Lock()
@@ -56,7 +56,7 @@ def record(body: dict, token: str = "") -> dict:
         "time": datetime.now(SITE_TZ).isoformat(timespec="seconds"),
         "rating": rating,
         "comment": comment,
-        "recipe": context.get("recipe"),
+        "formula": context.get("formula"),
         "from": context.get("from"),
         "to": context.get("to"),
         "shift": context.get("shift"),
@@ -86,7 +86,7 @@ def _notify(entry: dict) -> None:
     if not WEBHOOK_URL:
         return
     rating = FACES.get(entry["rating"], "no rating")
-    run = " · ".join(str(x) for x in [entry.get("recipe"), entry.get("from") and
+    run = " · ".join(str(x) for x in [entry.get("formula"), entry.get("from") and
                     f"{entry['from']} to {entry['to']}", entry.get("targets") and
                     f"{entry['targets']} device-sensor pairs"] if x)
     lines = [f"**Newton feedback — {rating}**"]

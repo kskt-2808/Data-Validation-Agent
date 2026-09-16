@@ -1,6 +1,6 @@
 """Compute-logic registry.
 
-Recipes are declared in recipes.json: label, formula, ledger columns and the
+Formulas are declared in formulas.json: label, formula, ledger columns and the
 parameters the UI renders. Each names a `compute` kind implemented here, so
 adding a calculation that reuses an existing kind is a JSON edit only — the UI
 renders whatever the registry declares.
@@ -13,7 +13,7 @@ from pathlib import Path
 from compute import (HOUR_MS, average_value, consumption_delta, coverage, run_hours,
                      time_weighted_average)
 
-_REGISTRY = json.loads((Path(__file__).parent / "recipes.json").read_text())
+_REGISTRY = json.loads((Path(__file__).parent / "formulas.json").read_text())
 UNIT_CONVERSIONS = _REGISTRY["unitConversions"]
 
 COVERAGE_WARN = 0.90
@@ -44,25 +44,25 @@ _GAP_PARAM = {
 }
 
 
-def _publish(recipe: dict) -> dict:
-    """Registry entry plus the standard columns and parameters every recipe gets."""
-    published = dict(recipe)
-    published["columns"] = _HEAD + list(recipe.get("columns") or []) + _STATUS
+def _publish(formula: dict) -> dict:
+    """Registry entry plus the standard columns and parameters every formula gets."""
+    published = dict(formula)
+    published["columns"] = _HEAD + list(formula.get("columns") or []) + _STATUS
     standard = []
-    if (recipe.get("unit") or {}).get("convertible"):
+    if (formula.get("unit") or {}).get("convertible"):
         standard.append(_OUTPUT_UNIT_PARAM)
-    if recipe.get("compute") in GAP_KINDS:
+    if formula.get("compute") in GAP_KINDS:
         standard.append(_GAP_PARAM)
-    published["params"] = standard + list(recipe.get("params") or [])
+    published["params"] = standard + list(formula.get("params") or [])
     return published
 
 
-RECIPES = [_publish(r) for r in _REGISTRY["recipes"]]
-RECIPES_BY_ID = {r["id"]: r for r in RECIPES}
+FORMULAS = [_publish(r) for r in _REGISTRY["formulas"]]
+FORMULAS_BY_ID = {r["id"]: r for r in FORMULAS}
 
 
-def base_unit(recipe: dict, target: dict) -> str:
-    source = (recipe.get("unit") or {}).get("source")
+def base_unit(formula: dict, target: dict) -> str:
+    source = (formula.get("unit") or {}).get("source")
     if source == "hours":
         return "h"
     if source == "percent":
@@ -70,9 +70,9 @@ def base_unit(recipe: dict, target: dict) -> str:
     return target["unit"]
 
 
-def resolve_unit(recipe: dict, target: dict, params: dict) -> tuple[str, float]:
+def resolve_unit(formula: dict, target: dict, params: dict) -> tuple[str, float]:
     """(unit the report shows, divisor that converts the native value into it)."""
-    base = base_unit(recipe, target)
+    base = base_unit(formula, target)
     chosen = params.get("outputUnit")
     if not chosen or chosen == base:
         return base, 1.0
@@ -205,11 +205,11 @@ EVALUATORS = {
 }
 
 
-def evaluate(recipe: dict, points, start_ms: int, end_ms: int, target: dict, params: dict) -> dict:
-    return EVALUATORS[recipe["compute"]](points, start_ms, end_ms, target, params)
+def evaluate(formula: dict, points, start_ms: int, end_ms: int, target: dict, params: dict) -> dict:
+    return EVALUATORS[formula["compute"]](points, start_ms, end_ms, target, params)
 
 
-def summarize(rows: list[dict], recipe: dict) -> list[dict]:
+def summarize(rows: list[dict], formula: dict) -> list[dict]:
     """Audit-card figures, one group per output unit (units are never added together)."""
     groups: dict[str, list[dict]] = {}
     for row in rows:
@@ -221,7 +221,7 @@ def summarize(rows: list[dict], recipe: dict) -> list[dict]:
         peak = max(counted, key=lambda r: r["value"], default=None)
         summary.append({
             "unit": unit,
-            "total": sum(values) if recipe["aggregate"] == "sum" and values else None,
+            "total": sum(values) if formula["aggregate"] == "sum" and values else None,
             "mean": sum(values) / len(values) if values else None,
             "valueCount": len(values),
             "peak": peak and {k: peak[k] for k in ("value", "date", "devID", "sensor")},

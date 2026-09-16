@@ -44,7 +44,7 @@ JSON-lines file and, if a webhook is set, posts to Teams or Slack.
 | `FEEDBACK_ADMIN_KEY` | Enables `GET /api/feedback/export.csv?key=…`. Unset means the export returns 404. |
 
 Stored with each submission: the rating, the note, and the run it came from
-(recipe, date range, shift, how many device-sensor pairs, and the PASS / WARN /
+(formula, date range, shift, how many device-sensor pairs, and the PASS / WARN /
 NO DATA / ERROR counts), plus a one-way hash of the submitter's token so repeat
 senders can be recognised. Never the token, and never the readings.
 
@@ -77,7 +77,7 @@ sends the signed-in user's own token on every request.
 | Piece | File |
 |---|---|
 | Calculations (pure functions) | `backend/compute.py` |
-| Recipe registry: labels, formulas, ledger columns, evaluators | `backend/recipes.py` |
+| Formula registry: labels, formulas, ledger columns, evaluators | `backend/formulas.py` |
 | One validation run: targets × shift windows, parallel fetches | `backend/validation.py` |
 | IOsense connector client (read-only) | `backend/iosense.py` |
 | Excel export (Summary, Ledger, Method sheets) | `backend/report.py` |
@@ -86,13 +86,13 @@ sends the signed-in user's own token on every request.
 
 ### Adding a calculation
 
-Recipes live in `backend/recipes.json`: label, formula, ledger columns and the
+Formulas live in `backend/formulas.json`: label, formula, ledger columns and the
 parameters they need. The UI renders whatever is declared there, so a formula
 that reuses an existing `compute` kind (`delta`, `threshold_time`, `mean`,
 `time_weighted_mean`, `availability`, `load_factor`) is a JSON edit only. A new
-kind also needs one evaluator function in `recipes.py`.
+kind also needs one evaluator function in `formulas.py`.
 
-| Recipe | Formula |
+| Formula | Formula |
 |---|---|
 | Energy Consumption | Δ = (Last DP − First DP) × m |
 | Run-Hours | Σ time intervals where reading ≥ threshold |

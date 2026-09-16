@@ -44,7 +44,7 @@ class FakeClient:
 
 
 def request(**overrides):
-    body = {"recipe": "consumption_delta", "from": "2026-09-13", "to": "2026-09-14",
+    body = {"formula": "consumption_delta", "from": "2026-09-13", "to": "2026-09-14",
             "shiftStart": "07:00", "shiftEnd": "07:00",
             "targets": [{"devID": "EVOEM_C1", "sensor": "D30"}, {"devID": "BROKEN", "sensor": "D30"}]}
     body.update(overrides)
@@ -92,7 +92,7 @@ class RunValidation(unittest.TestCase):
 
     def test_average_value_is_the_plain_mean(self):
         result = run_validation(self.client, DEVICES, request(
-            recipe="average_value", to="2026-09-14",
+            formula="average_value", to="2026-09-14",
             targets=[{"devID": "EVOEM_C1", "sensor": "D6"}]))
         row = next(r for r in result["rows"] if r["date"] == "2026-09-14")
         self.assertEqual(row["unit"], "A")
@@ -103,7 +103,7 @@ class RunValidation(unittest.TestCase):
         self.assertEqual(row["samples"], len(points))
 
     def test_run_hours_can_report_in_minutes(self):
-        body = request(recipe="run_hours", to="2026-09-14", outputUnit="min",
+        body = request(formula="run_hours", to="2026-09-14", outputUnit="min",
                        targets=[{"devID": "EVOEM_C1", "sensor": "D6", "threshold": 3}])
         minutes = next(r for r in run_validation(self.client, DEVICES, body)["rows"]
                        if r["date"] == "2026-09-14")
@@ -114,7 +114,7 @@ class RunValidation(unittest.TestCase):
         self.assertAlmostEqual(minutes["value"], hours["value"] * 60)
 
     def test_availability_divides_run_hours_by_planned_hours(self):
-        body = request(recipe="availability_ratio", to="2026-09-14", plannedHours=12,
+        body = request(formula="availability_ratio", to="2026-09-14", plannedHours=12,
                        targets=[{"devID": "EVOEM_C1", "sensor": "D6", "threshold": 3}])
         row = next(r for r in run_validation(self.client, DEVICES, body)["rows"]
                    if r["date"] == "2026-09-14")
@@ -124,7 +124,7 @@ class RunValidation(unittest.TestCase):
 
     def test_load_factor_is_average_over_peak(self):
         row = next(r for r in run_validation(self.client, DEVICES, request(
-            recipe="load_factor", to="2026-09-14",
+            formula="load_factor", to="2026-09-14",
             targets=[{"devID": "EVOEM_C1", "sensor": "D6"}]))["rows"] if r["date"] == "2026-09-14")
         self.assertEqual(row["unit"], "%")
         self.assertAlmostEqual(row["value"], row["average"] / row["peak"] * 100)
@@ -132,20 +132,20 @@ class RunValidation(unittest.TestCase):
     def test_run_hours_needs_a_threshold_for_every_device(self):
         with self.assertRaisesRegex(ValueError, "threshold"):
             run_validation(self.client, DEVICES, request(
-                recipe="run_hours", targets=[{"devID": "EVOEM_C1", "sensor": "D6"}]))
+                formula="run_hours", targets=[{"devID": "EVOEM_C1", "sensor": "D6"}]))
 
     def test_run_hours_row(self):
         result = run_validation(self.client, DEVICES, request(
-            recipe="run_hours", targets=[{"devID": "EVOEM_C1", "sensor": "D6", "threshold": 3}]))
+            formula="run_hours", targets=[{"devID": "EVOEM_C1", "sensor": "D6", "threshold": 3}]))
         row = next(r for r in result["rows"] if r["date"] == "2026-09-14")
         self.assertEqual(row["unit"], "h")
         self.assertAlmostEqual(row["value"] + row["stopped_hours"] + row["unknown_hours"], 24.0)
 
-    def test_rejects_unknown_device_and_future_recipe(self):
+    def test_rejects_unknown_device_and_future_formula(self):
         with self.assertRaisesRegex(ValueError, "not in your account"):
             run_validation(self.client, DEVICES, request(targets=[{"devID": "ZYDEM_D4", "sensor": "D30"}]))
         with self.assertRaisesRegex(ValueError, "unavailable"):
-            run_validation(self.client, DEVICES, request(recipe="specific_energy"))
+            run_validation(self.client, DEVICES, request(formula="specific_energy"))
 
     def test_excel_export(self):
         result = run_validation(self.client, DEVICES, request())

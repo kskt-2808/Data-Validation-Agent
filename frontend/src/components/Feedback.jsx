@@ -28,7 +28,7 @@ export default function Feedback({ result, onAuthLost }) {
         comment,
         // Sent with the note so a "this looks wrong" arrives with the run it refers to.
         context: {
-          recipe: result.recipe.id,
+          formula: result.formula.id,
           from: result.params.from,
           to: result.params.to,
           shift: result.params.shift,
@@ -105,7 +105,7 @@ export default function Feedback({ result, onAuthLost }) {
           {state === "sending" ? "Sending…" : "Send feedback"}
         </button>
         <p className="help">
-          Sent with your rating: the recipe, date range and how many shifts passed. Not your readings, and not your
+          Sent with your rating: the formula, date range and how many shifts passed. Not your readings, and not your
           sign-in token.
         </p>
       </div>

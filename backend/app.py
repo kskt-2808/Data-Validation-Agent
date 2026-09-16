@@ -11,7 +11,7 @@ from flask import Flask, Response, jsonify, request, send_file, send_from_direct
 
 import feedback as feedback_store
 import iosense
-from recipes import RECIPES, UNIT_CONVERSIONS
+from formulas import FORMULAS, UNIT_CONVERSIONS
 from report import build_workbook, filename
 from validation import SITE_TZ, run_validation
 
@@ -78,9 +78,9 @@ def devices():
     return jsonify(devices=_devices(_client()))
 
 
-@app.get("/api/recipes")
-def recipes():
-    return jsonify(recipes=RECIPES, timezone=SITE_TZ.key,
+@app.get("/api/formulas")
+def formulas():
+    return jsonify(formulas=FORMULAS, timezone=SITE_TZ.key,
                    unitConversions=UNIT_CONVERSIONS)
 
 
@@ -95,7 +95,7 @@ def validate():
 @app.post("/api/export")
 def export():
     result = request.get_json(silent=True) or {}
-    if not isinstance(result.get("rows"), list) or "recipe" not in result:
+    if not isinstance(result.get("rows"), list) or "formula" not in result:
         raise ValueError("Send a validation result to export")
     return send_file(BytesIO(build_workbook(result)), as_attachment=True,
                      download_name=filename(result),

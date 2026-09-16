@@ -57,7 +57,7 @@ async function request(path, { method = "GET", body, raw = false } = {}) {
 export const api = {
   exchangeSso: (token) => request("auth/sso", { method: "POST", body: { token } }),
   devices: () => request("devices"),
-  recipes: () => request("recipes"),
+  formulas: () => request("formulas"),
   validate: (body) => request("validate", { method: "POST", body }),
   exportExcel: (result) => request("export", { method: "POST", body: result, raw: true }),
   feedback: (body) => request("feedback", { method: "POST", body }),

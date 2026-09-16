@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Arrow, Bars, Bolt, Database, Document, Gauge, Grid, Layers, Lock, Logo, Pulse, ShieldCheck, Target, Trend } from "./Icons.jsx";
 
-// Cards come from the recipe registry, so what the page advertises is what the
+// Cards come from the formula registry, so what the page advertises is what the
 // app can actually run. Anything not listed here still shows, using its formula.
 const CARD_COPY = {
   consumption_delta: { title: "Energy Validation", blurb: "Recompute and verify reported energy metrics.", Icon: Bolt },
@@ -19,10 +19,10 @@ const ASSURANCES = [
   { Icon: Document, tone: "blue", title: "Traceable", blurb: "Every result carries its evidence." },
 ];
 
-export default function Intro({ recipes, onStart, onPick }) {
-  const cards = recipes
+export default function Intro({ formulas, onStart, onPick }) {
+  const cards = formulas
     .filter((r) => r.available)
-    .map((r) => ({ id: r.id, Icon: Grid, title: r.label.split(" (")[0], blurb: r.formula, ...CARD_COPY[r.id] }));
+    .map((r) => ({ id: r.id, Icon: Grid, title: r.label.split(" (")[0], blurb: r.expression, ...CARD_COPY[r.id] }));
   const [active, setActive] = useState(0);
   const step = (delta) => setActive((i) => (i + delta + cards.length) % cards.length);
   const trackRef = useRef(null);

@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { isNumeric } from "../format.jsx";
 
-// Everything here is rendered from what the recipe declares in recipes.json:
+// Everything here is rendered from what the formula declares in formulas.json:
 // its formula, its parameters and whether its unit can be converted.
-export default function RecipePanel({
-  recipes,
-  recipe,
-  onRecipe,
+export default function FormulaPanel({
+  formulas,
+  formula,
+  onFormula,
   targets,
   targetParams,
   setTargetParams,
@@ -17,32 +17,32 @@ export default function RecipePanel({
   mixedUnits,
 }) {
   const update = (key, patch) => setTargetParams((p) => ({ ...p, [key]: { ...p[key], ...patch } }));
-  const runSpecs = recipe.params.filter((p) => p.scope === "run");
-  const targetSpecs = recipe.params.filter((p) => p.scope === "target");
+  const runSpecs = formula.params.filter((p) => p.scope === "run");
+  const targetSpecs = formula.params.filter((p) => p.scope === "target");
 
   return (
     <section className="card">
       <h2>
-        <span className="step">3</span>Compute logic registry
+        <span className="step">3</span>Formula registry
       </h2>
 
       <label className="field">
-        <span className="label">Select calculation recipe</span>
-        <select value={recipe.id} onChange={(e) => onRecipe(e.target.value)}>
-          {recipes.map((r) => (
+        <span className="label">Select formula</span>
+        <select value={formula.id} onChange={(e) => onFormula(e.target.value)}>
+          {formulas.map((r) => (
             <option key={r.id} value={r.id} disabled={!r.available}>
               [{r.group}] {r.label}
               {r.available ? "" : " — coming soon"}
             </option>
           ))}
-          <option disabled>+ Register new custom recipe… — coming soon</option>
+          <option disabled>+ Register new custom formula… — coming soon</option>
         </select>
       </label>
 
       <div className="formula">
         <span className="label">Active formula expression</span>
-        <code>{recipe.formula}</code>
-        <p className="muted small">{recipe.method}</p>
+        <code>{formula.expression}</code>
+        <p className="muted small">{formula.method}</p>
       </div>
 
       {runSpecs.length > 0 && (

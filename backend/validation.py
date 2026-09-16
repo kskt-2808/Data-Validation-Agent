@@ -1,4 +1,4 @@
-"""Runs one validation request: resolve targets, fetch each shift, apply the recipe."""
+"""Runs one validation request: resolve targets, fetch each shift, apply the formula."""
 from __future__ import annotations
 
 import math
@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 
 from compute import clean, shift_windows
 from iosense import UpstreamError
-from recipes import RECIPES_BY_ID, evaluate, resolve_unit, summarize
+from formulas import FORMULAS_BY_ID, evaluate, resolve_unit, summarize
 
 SITE_TZ = ZoneInfo(os.environ.get("SITE_TIMEZONE", "Asia/Kolkata"))
 SOURCE = "GET /api/account/deviceData/getDataCalibration/{devID}/{sensor}/{start}/{end}/false"
@@ -21,9 +21,9 @@ DEFAULT_GAP_MINUTES = 15
 
 
 def run_validation(client, devices_by_id: dict, body: dict) -> dict:
-    recipe = RECIPES_BY_ID.get(body.get("recipe"))
-    if not recipe or not recipe.get("available"):
-        raise ValueError(f"Unknown or unavailable recipe: {body.get('recipe')!r}")
+    formula = FORMULAS_BY_ID.get(body.get("formula"))
+    if not formula or not formula.get("available"):
+        raise ValueError(f"Unknown or unavailable formula: {body.get('formula')!r}")
 
     first_day, last_day = _date(body.get("from"), "from"), _date(body.get("to"), "to")
     if last_day < first_day:
@@ -33,10 +33,10 @@ def run_validation(client, devices_by_id: dict, body: dict) -> dict:
     shift_start = _time(body.get("shiftStart"), "shiftStart")
     shift_end = _time(body.get("shiftEnd"), "shiftEnd")
 
-    params = _run_params(recipe, body)
+    params = _run_params(formula, body)
     params["shift"] = f"{shift_start:%H:%M} – {shift_end:%H:%M}"
 
-    targets = [_target(t, devices_by_id, recipe, params) for t in body.get("targets") or []]
+    targets = [_target(t, devices_by_id, formula, params) for t in body.get("targets") or []]
     if not targets:
         raise ValueError("Choose at least one device and sensor")
     windows = shift_windows(first_day, last_day, shift_start, shift_end, SITE_TZ)
@@ -46,25 +46,25 @@ def run_validation(client, devices_by_id: dict, body: dict) -> dict:
 
     jobs = [(t, w) for t in targets for w in windows]
     with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as pool:
-        rows = list(pool.map(lambda job: _row(client, recipe, params, *job), jobs))
+        rows = list(pool.map(lambda job: _row(client, formula, params, *job), jobs))
     rows.sort(key=lambda r: (r["date"], r["devID"], r["sensor"]))
 
     reported = {k: v for k, v in params.items() if k not in ("maxGapMs",)}
     return {
-        "recipe": recipe,
+        "formula": formula,
         "params": {"from": first_day.isoformat(), "to": last_day.isoformat(), **reported},
         "timezone": SITE_TZ.key,
         "generatedAt": datetime.now(SITE_TZ).isoformat(timespec="seconds"),
         "source": SOURCE,
         "rows": rows,
-        "summary": summarize(rows, recipe),
+        "summary": summarize(rows, formula),
     }
 
 
-def _run_params(recipe: dict, body: dict) -> dict:
-    """Run-level parameter values, validated against what the recipe declares."""
+def _run_params(formula: dict, body: dict) -> dict:
+    """Run-level parameter values, validated against what the formula declares."""
     params = {}
-    for spec in recipe["params"]:
+    for spec in formula["params"]:
         if spec.get("scope") != "run":
             continue
         params[spec["key"]] = _param_value(spec, body.get(spec["key"]))
@@ -87,7 +87,7 @@ def _param_value(spec: dict, raw):
     return value
 
 
-def _row(client, recipe: dict, params: dict, target: dict, window) -> dict:
+def _row(client, formula: dict, params: dict, target: dict, window) -> dict:
     day, start_ms, end_ms = window
     row = {
         "date": day.isoformat(), "shift": params["shift"],
@@ -106,7 +106,7 @@ def _row(client, recipe: dict, params: dict, target: dict, window) -> dict:
     except UpstreamError as err:
         row.update(status="ERROR", notes=[f"Platform returned no usable response: {err}"])
         return row
-    result = evaluate(recipe, clean(raw), start_ms, end_ms, target, params)
+    result = evaluate(formula, clean(raw), start_ms, end_ms, target, params)
     for key in TIME_KEYS:
         if result.get(key) is not None:
             result[key] = _iso(result[key])
@@ -114,7 +114,7 @@ def _row(client, recipe: dict, params: dict, target: dict, window) -> dict:
     return row
 
 
-def _target(t: dict, devices_by_id: dict, recipe: dict, params: dict) -> dict:
+def _target(t: dict, devices_by_id: dict, formula: dict, params: dict) -> dict:
     device = devices_by_id.get(t.get("devID"))
     if not device:
         raise ValueError(f"Device {t.get('devID')!r} is not in your account")
@@ -131,7 +131,7 @@ def _target(t: dict, devices_by_id: dict, recipe: dict, params: dict) -> dict:
     }
     if target["m"] == 0:
         raise ValueError(f"Calibration m for {device['devID']} / {sensor['id']} is 0")
-    for spec in recipe["params"]:
+    for spec in formula["params"]:
         if spec.get("scope") != "target":
             continue
         value = _param_value(spec, t.get(spec["key"]))
@@ -139,7 +139,7 @@ def _target(t: dict, devices_by_id: dict, recipe: dict, params: dict) -> dict:
             raise ValueError(f"Set {spec['label'].lower()} for "
                              f"{device['devID']} / {sensor['id']}")
         target[spec["key"]] = value
-    target["outUnit"], target["unitDivisor"] = resolve_unit(recipe, target, params)
+    target["outUnit"], target["unitDivisor"] = resolve_unit(formula, target, params)
     return target
 
 

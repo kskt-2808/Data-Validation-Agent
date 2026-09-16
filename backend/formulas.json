@@ -1,5 +1,5 @@
 {
-  "_comment": "Compute-logic registry. Adding a calculation that reuses an existing `compute` kind is a JSON edit only; a new kind also needs an evaluator in recipes.py. Ledger head/status columns and the standard params (output unit, gap tolerance) are added automatically.",
+  "_comment": "Compute-logic registry. Adding a calculation that reuses an existing `compute` kind is a JSON edit only; a new kind also needs an evaluator in formulas.py. Ledger head/status columns and the standard params (output unit, gap tolerance) are added automatically.",
   "unitConversions": {
     "Wh": {
       "kWh": 1000,
@@ -64,14 +64,14 @@
       "s": 0.0002777777777777778
     }
   },
-  "recipes": [
+  "formulas": [
     {
       "id": "consumption_delta",
       "group": "EMS",
       "label": "Energy Consumption (Last DP \u2212 First DP)",
       "compute": "delta",
       "available": true,
-      "formula": "\u0394 = (Last DP \u2212 First DP) \u00d7 m",
+      "expression": "\u0394 = (Last DP \u2212 First DP) \u00d7 m",
       "method": "Uses raw readings inside the shift window [start, end). Readings below 0 are the meter's no-reading sentinel and are dropped. Consumption is the last valid reading minus the first, times the calibration m (c cancels in a difference). Fewer than two valid readings is NO DATA, never zero.",
       "aggregate": "sum",
       "unit": {
@@ -119,7 +119,7 @@
       "label": "Run-Hours Duration (Threshold Time Sum)",
       "compute": "threshold_time",
       "available": true,
-      "formula": "Run-Hours = \u03a3 time intervals where reading \u2265 threshold",
+      "expression": "Run-Hours = \u03a3 time intervals where reading \u2265 threshold",
       "method": "Each raw reading holds until the next one, for at most the gap tolerance. Time where the calibrated reading is at or above the device's threshold counts as running. Time with no reading inside the gap tolerance is Unknown and counts as neither running nor stopped, so Run + Stopped + Unknown = shift length. Computed from raw readings, not the platform's run-time endpoint, whose output is a reading count rather than a duration.",
       "aggregate": "sum",
       "unit": {
@@ -176,7 +176,7 @@
       "label": "Average Value (\u03a3 readings \u00f7 N)",
       "compute": "mean",
       "available": true,
-      "formula": "Avg = \u03a3 readings \u00f7 N",
+      "expression": "Avg = \u03a3 readings \u00f7 N",
       "method": "The plain mean of every calibrated reading inside the shift: add them up and divide by how many there were. Each reading counts once, however long it held, so an irregular reporting rate biases the result toward the busiest periods. Use Time-Weighted Average when readings are unevenly spaced.",
       "aggregate": "mean",
       "unit": {
@@ -217,7 +217,7 @@
       "label": "Time-Weighted Average",
       "compute": "time_weighted_mean",
       "available": true,
-      "formula": "Avg = \u03a3(reading \u00d7 interval) \u00f7 \u03a3 interval",
+      "expression": "Avg = \u03a3(reading \u00d7 interval) \u00f7 \u03a3 interval",
       "method": "Each calibrated reading is weighted by how long it held, capped at the gap tolerance. Unknown time is excluded rather than treated as zero. This is the average to use when the device reports irregularly.",
       "aggregate": "mean",
       "unit": {
@@ -263,8 +263,8 @@
       "label": "OEE Availability (Run-Hours \u00f7 Planned Hours)",
       "compute": "availability",
       "available": true,
-      "formula": "Availability = (Actual Run-Hours \u00f7 Planned Shift Hours) \u00d7 100",
-      "method": "Run-hours are computed exactly as in the Run-Hours recipe, then divided by the planned hours for the shift. Planned hours defaults to the shift length; set it when the machine was only scheduled for part of the shift. Unknown time is not counted as running, so a shift with poor coverage reads low rather than optimistic.",
+      "expression": "Availability = (Actual Run-Hours \u00f7 Planned Shift Hours) \u00d7 100",
+      "method": "Run-hours are computed exactly as in the Run-Hours formula, then divided by the planned hours for the shift. Planned hours defaults to the shift length; set it when the machine was only scheduled for part of the shift. Unknown time is not counted as running, so a shift with poor coverage reads low rather than optimistic.",
       "aggregate": "mean",
       "unit": {
         "source": "percent",
@@ -329,7 +329,7 @@
       "label": "Load Factor (Average \u00f7 Peak)",
       "compute": "load_factor",
       "available": true,
-      "formula": "Load Factor = (Average Power \u00f7 Peak Power) \u00d7 100",
+      "expression": "Load Factor = (Average Power \u00f7 Peak Power) \u00d7 100",
       "method": "The mean of the calibrated readings divided by the highest reading in the shift. Point it at a power sensor for electrical load factor; the peak reading is reported alongside as peak demand. A shift whose peak is 0 is reported as NO DATA rather than a divide-by-zero.",
       "aggregate": "mean",
       "unit": {
@@ -370,7 +370,7 @@
       "label": "Specific Energy Consumption (kWh \u00f7 Output Units)",
       "compute": "ratio_of_sources",
       "available": false,
-      "formula": "SEC = Total Energy (kWh) \u00f7 Production Output Units",
+      "expression": "SEC = Total Energy (kWh) \u00f7 Production Output Units",
       "method": "Needs a second source for production output \u2014 a counter sensor or manually entered units per shift \u2014 which Newton cannot select yet.",
       "aggregate": "mean",
       "unit": {

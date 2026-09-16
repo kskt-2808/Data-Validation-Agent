@@ -26,17 +26,17 @@ def build_workbook(result: dict) -> bytes:
 
 def filename(result: dict) -> str:
     p = result["params"]
-    return f"newton_{result['recipe']['id']}_{p['from']}_to_{p['to']}.xlsx"
+    return f"newton_{result['formula']['id']}_{p['from']}_to_{p['to']}.xlsx"
 
 
 def _summary_sheet(ws, result: dict) -> None:
-    recipe, p = result["recipe"], result["params"]
+    formula, p = result["formula"], result["params"]
     ws.title = "Summary"
     ws.append(["Newton — Data Validation Report"])
     ws["A1"].font = Font(bold=True, size=14)
     for label, value in [
-        ("Calculation", recipe["label"]),
-        ("Formula", recipe["formula"]),
+        ("Calculation", formula["label"]),
+        ("Formula", formula["expression"]),
         ("Date range", f"{p['from']} to {p['to']}"),
         ("Shift window", f"{p['shift']} ({result['timezone']})"),
         ("Generated", result["generatedAt"]),
@@ -47,11 +47,11 @@ def _summary_sheet(ws, result: dict) -> None:
         ws.append([])
         ws.append([f"Figures in {unit}" if unit else "Figures"])
         ws.cell(ws.max_row, 1).font = Font(bold=True)
-        if recipe["aggregate"] == "sum":
-            ws.append([recipe["labels"]["total"], group["total"], unit])
-        ws.append([recipe["labels"]["avg"], group["mean"], unit])
+        if formula["aggregate"] == "sum":
+            ws.append([formula["labels"]["total"], group["total"], unit])
+        ws.append([formula["labels"]["avg"], group["mean"], unit])
         peak = group["peak"]
-        ws.append([recipe["labels"]["peak"], peak and peak["value"], unit,
+        ws.append([formula["labels"]["peak"], peak and peak["value"], unit,
                    peak and f"{peak['date']} · {peak['devID']} / {peak['sensor']}"])
         c = group["counts"]
         ws.append(["Valid shifts", c["PASS"] + c["WARN"], "", f"{c['WARN']} with warnings"])
@@ -64,10 +64,10 @@ def _summary_sheet(ws, result: dict) -> None:
     _widths(ws, [28, 48, 10, 36])
 
 
-def _ledger_columns(recipe: dict) -> list[tuple[str, str, str]]:
+def _ledger_columns(formula: dict) -> list[tuple[str, str, str]]:
     """(header, row key, kind) with value/time pairs split and audit columns appended."""
     cols = []
-    for c in recipe["columns"]:
+    for c in formula["columns"]:
         if c["type"] == "status":
             continue
         cols.append((c["label"], c["key"], c["type"]))
@@ -83,7 +83,7 @@ def _ledger_columns(recipe: dict) -> list[tuple[str, str, str]]:
 
 
 def _ledger_sheet(ws, result: dict) -> None:
-    cols = _ledger_columns(result["recipe"])
+    cols = _ledger_columns(result["formula"])
     ws.append([h for h, _, _ in cols])
     for cell in ws[1]:
         cell.fill, cell.font = HEADER_FILL, HEADER_FONT
@@ -113,11 +113,11 @@ def _ledger_sheet(ws, result: dict) -> None:
 
 
 def _method_sheet(ws, result: dict) -> None:
-    recipe, p = result["recipe"], result["params"]
+    formula, p = result["formula"], result["params"]
     lines = [
-        ("Calculation", recipe["label"]),
-        ("Formula", recipe["formula"]),
-        ("Method", recipe["method"]),
+        ("Calculation", formula["label"]),
+        ("Formula", formula["expression"]),
+        ("Method", formula["method"]),
         ("Data source", f"{result['source']} — raw readings; Newton applies m and c itself "
                         "(see the m, c and Factor Source columns on the Ledger sheet)."),
         ("Shift window", f"{p['shift']} in {result['timezone']}, half-open [start, end): a reading "
