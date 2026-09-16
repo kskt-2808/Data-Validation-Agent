@@ -9,6 +9,7 @@ from pathlib import Path
 
 from flask import Flask, Response, jsonify, request, send_file, send_from_directory
 
+import dotenv_loader  # noqa: F401  — must import first: fills os.environ from .env
 import feedback as feedback_store
 import iosense
 from formulas import FORMULAS, UNIT_CONVERSIONS

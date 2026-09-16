@@ -32,6 +32,14 @@ The deploy server keeps its own clone of the repo and does not pull on a
 first Deploy. After pushing, use **Update deployment** (it pulls, then
 redeploys), or the deploy will build an old or empty checkout.
 
+### Settings in AI Studio Manager
+
+Its **Env Config** button writes the variables you enter to a `.env` file at the
+repository root; its pm2 config passes only `PORT` and `NODE_ENV`. Newton reads
+that file at startup (`backend/dotenv_loader.py`), so UI settings take effect on
+the next **Update Deployment**. A real environment variable always wins over the
+file.
+
 ### Feedback settings
 
 The Results page collects a rating and a note. Each submission appends to a
@@ -40,7 +48,8 @@ JSON-lines file and, if a webhook is set, posts to Teams or Slack.
 | Variable | Meaning |
 |---|---|
 | `FEEDBACK_FILE` | Where to append. Default `~/newton-feedback/feedback.jsonl` — outside the repo, so a redeploy cannot erase it. |
-| `FEEDBACK_WEBHOOK_URL` | Teams or Slack incoming webhook. Both accept the same payload. A failed post never loses the entry; the file is the record. |
+| `FEEDBACK_WEBHOOK_URL` | Teams Workflow URL, Slack webhook, or a classic Teams connector. A failed post never loses the entry; the file is the record. |
+| `FEEDBACK_WEBHOOK_FORMAT` | `card` or `text`. By default the URL decides: Teams Workflows (Power Automate) need an Adaptive Card, Slack and classic connectors take plain text. |
 | `FEEDBACK_ADMIN_KEY` | Enables `GET /api/feedback/export.csv?key=…`. Unset means the export returns 404. |
 
 Stored with each submission: the rating, the note, and the run it came from

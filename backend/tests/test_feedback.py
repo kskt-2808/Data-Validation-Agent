@@ -71,3 +71,34 @@ class Record(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WebhookPayload(unittest.TestCase):
+    TEAMS = "https://prod-12.westus.logic.azure.com:443/workflows/abc/triggers/manual/paths/invoke?sig=x"
+    SLACK = "https://hooks.slack.com/services/T000/B000/xxxx"
+    ENTRY = {"rating": 2, "comment": "Run-hours looks high", "formula": "run_hours",
+             "from": "2026-09-10", "to": "2026-09-16", "targets": 4}
+
+    def test_teams_workflow_url_gets_an_adaptive_card(self):
+        payload = feedback.build_payload(self.ENTRY, self.TEAMS)
+        card = payload["attachments"][0]["content"]
+        self.assertEqual(payload["type"], "message")
+        self.assertEqual(card["type"], "AdaptiveCard")
+        texts = [b["text"] for b in card["body"]]
+        self.assertIn("Run-hours looks high", texts)
+        self.assertTrue(any("Newton feedback" in t for t in texts))
+
+    def test_slack_url_gets_plain_text(self):
+        payload = feedback.build_payload(self.ENTRY, self.SLACK)
+        self.assertEqual(set(payload), {"text"})
+        self.assertIn("Run-hours looks high", payload["text"])
+
+    def test_format_can_be_forced(self):
+        feedback.WEBHOOK_FORMAT = "card"
+        self.addCleanup(lambda: setattr(feedback, "WEBHOOK_FORMAT", ""))
+        self.assertIn("attachments", feedback.build_payload(self.ENTRY, self.SLACK))
+
+    def test_a_rating_with_no_comment_still_builds(self):
+        for url in (self.TEAMS, self.SLACK):
+            payload = feedback.build_payload({"rating": 5, "comment": "", "formula": None}, url)
+            self.assertTrue(payload)
