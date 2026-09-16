@@ -51,6 +51,7 @@ JSON-lines file and, if a webhook is set, posts to Teams or Slack.
 | `FEEDBACK_WEBHOOK_URL` | Teams Workflow URL, Slack webhook, or a classic Teams connector. A failed post never loses the entry; the file is the record. |
 | `FEEDBACK_WEBHOOK_FORMAT` | `card` or `text`. By default the URL decides: Teams Workflows (Power Automate) need an Adaptive Card, Slack and classic connectors take plain text. |
 | `FEEDBACK_ADMIN_KEY` | Enables `GET /api/feedback/export.csv?key=…`. Unset means the export returns 404. |
+| `CUSTOM_FORMULAS_FILE` | Where user-written formulas are stored. Default `~/newton-formulas/custom.json`, outside the repo for the same reason. |
 
 Stored with each submission: the rating, the note, and the run it came from
 (formula, date range, shift, how many device-sensor pairs, and the PASS / WARN /
@@ -143,6 +144,29 @@ you where they apply.
 
 A genuinely new calculation also needs one evaluator function in `formulas.py`
 and an entry in `EVALUATORS` — `_integrate` is the shortest example.
+
+### Custom formulas, written in the app
+
+Users can write their own from the formula dropdown: a name, an expression, a
+unit. They are stored server-side (`CUSTOM_FORMULAS_FILE`, default
+`~/newton-formulas/custom.json`), appear in the dropdown for everyone, and only
+their author can delete one.
+
+The expression is arithmetic over values Newton computes for each shift —
+`delta`, `mean`, `twa`, `min_reading`, `max_reading`, `coverage`, `shift_hours`,
+`m`, `c`, plus `hours_above(x)`, `hours_below(x)`, `integral(basis)`, `abs`,
+`round`. Calibration is already applied; `delta_raw` gives the meter's own
+difference.
+
+`backend/expressions.py` parses the expression to a syntax tree and allows only
+numbers, those names and arithmetic. Attribute access, imports, comprehensions,
+lambdas and unknown calls are refused before anything runs, so an expression
+cannot reach the filesystem, the network or the interpreter. A shift missing a
+value the expression needs is NO DATA, not zero.
+
+Custom formulas are labelled **custom — not reviewed** in the UI and say so in
+the Method sheet of every export, with the author and date. They have not been
+through the tests the built-ins have, and a report should show that.
 
 ### Testing a formula
 

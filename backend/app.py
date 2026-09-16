@@ -12,7 +12,9 @@ from flask import Flask, Response, jsonify, request, send_file, send_from_direct
 import dotenv_loader  # noqa: F401  — must import first: fills os.environ from .env
 import feedback as feedback_store
 import iosense
-from formulas import FORMULAS, UNIT_CONVERSIONS
+import custom_formulas
+import expressions
+from formulas import UNIT_CONVERSIONS, all_formulas
 from report import build_workbook, filename
 from validation import SITE_TZ, run_validation
 
@@ -79,10 +81,33 @@ def devices():
     return jsonify(devices=_devices(_client()))
 
 
+def _token() -> str:
+    return request.headers.get("Authorization", "")
+
+
 @app.get("/api/formulas")
 def formulas():
-    return jsonify(formulas=FORMULAS, timezone=SITE_TZ.key,
-                   unitConversions=UNIT_CONVERSIONS)
+    return jsonify(formulas=all_formulas(_token()), timezone=SITE_TZ.key,
+                   unitConversions=UNIT_CONVERSIONS,
+                   expressionHelp={"values": expressions.VALUES, "functions": expressions.FUNCTIONS})
+
+
+@app.post("/api/formulas/check")
+def formulas_check():
+    body = request.get_json(silent=True) or {}
+    expressions.parse(body.get("expression"))
+    return jsonify(ok=True, uses=sorted(expressions.names_used(body.get("expression"))))
+
+
+@app.post("/api/formulas/custom")
+def formulas_create():
+    body = request.get_json(silent=True) or {}
+    return jsonify(custom_formulas.create(body, _token()))
+
+
+@app.delete("/api/formulas/custom/<formula_id>")
+def formulas_delete(formula_id):
+    return jsonify(custom_formulas.delete(formula_id, _token()))
 
 
 @app.post("/api/validate")
@@ -90,7 +115,7 @@ def validate():
     client = _client()
     body = request.get_json(silent=True) or {}
     devices_by_id = {d["devID"]: d for d in _devices(client)}
-    return jsonify(run_validation(client, devices_by_id, body))
+    return jsonify(run_validation(client, devices_by_id, body, _token()))
 
 
 @app.post("/api/export")

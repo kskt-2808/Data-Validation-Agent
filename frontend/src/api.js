@@ -61,4 +61,7 @@ export const api = {
   validate: (body) => request("validate", { method: "POST", body }),
   exportExcel: (result) => request("export", { method: "POST", body: result, raw: true }),
   feedback: (body) => request("feedback", { method: "POST", body }),
+  checkExpression: (expression) => request("formulas/check", { method: "POST", body: { expression } }),
+  createFormula: (body) => request("formulas/custom", { method: "POST", body }),
+  deleteFormula: (id) => request(`formulas/custom/${encodeURIComponent(id)}`, { method: "DELETE" }),
 };

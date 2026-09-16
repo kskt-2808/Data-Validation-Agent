@@ -30,6 +30,7 @@ export default function Newton({ onAuthLost }) {
   const [devices, setDevices] = useState(null);
   const [formulas, setFormulas] = useState([]);
   const [unitConversions, setUnitConversions] = useState({});
+  const [expressionHelp, setExpressionHelp] = useState(null);
   const [timezone, setTimezone] = useState("");
   const [loadError, setLoadError] = useState("");
 
@@ -55,6 +56,7 @@ export default function Newton({ onAuthLost }) {
         setDevices(d.devices);
         setFormulas(r.formulas);
         setUnitConversions(r.unitConversions || {});
+        setExpressionHelp(r.expressionHelp || null);
         setTimezone(r.timezone);
       })
       .catch((err) => fail(err, setLoadError));
@@ -74,6 +76,17 @@ export default function Newton({ onAuthLost }) {
       return next;
     });
   }, [formulaId, formulas.length]);
+
+  // Custom formulas are saved server-side, so the list is re-read after a change.
+  async function reloadFormulas(selectId) {
+    try {
+      const r = await api.formulas();
+      setFormulas(r.formulas);
+      if (selectId) setFormulaId(selectId);
+    } catch (err) {
+      fail(err, setLoadError);
+    }
+  }
 
   const deviceById = useMemo(() => new Map((devices || []).map((d) => [d.devID, d])), [devices]);
 
@@ -308,6 +321,9 @@ export default function Newton({ onAuthLost }) {
               baseUnit={baseUnit}
               unitOptions={unitOptions}
               mixedUnits={mixedUnits}
+              expressionHelp={expressionHelp}
+              onFormulasChanged={reloadFormulas}
+              onAuthLost={onAuthLost}
             />
           )}
 

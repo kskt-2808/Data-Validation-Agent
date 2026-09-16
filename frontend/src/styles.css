@@ -237,3 +237,21 @@ td.status { min-width: 96px; }
 .idea textarea:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 .feedback-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
 .feedback-actions .help { margin: 0; flex: 1 1 320px; }
+
+/* Custom formula editor */
+.editor { margin: 4px 0 18px; padding: 20px 22px; background: var(--bg-soft); border: 1px solid var(--line); border-radius: var(--radius); }
+.editor h3 { margin: 0 0 8px; color: var(--ink); }
+.editor .help code { padding: 1px 5px; border-radius: 4px; background: #fff; border: 1px solid var(--line); font-size: 12px; }
+.editor input.expression { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.checked { margin: 6px 0 0; font-size: 12px; font-weight: 600; color: var(--green); }
+.editor-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.cheatsheet { margin-top: 16px; }
+.cheatsheet summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--blue); }
+.cheatsheet ul { margin: 10px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.cheatsheet li { display: flex; flex-direction: column; gap: 2px; }
+.cheatsheet code { align-self: flex-start; padding: 2px 6px; border-radius: 4px; background: #fff; border: 1px solid var(--line); font-size: 12px; }
+.cheatsheet small { color: var(--muted); font-size: 12px; }
+.cheatsheet .names { max-height: 260px; overflow-y: auto; }
+.link { border: 0; background: none; padding: 0; font: inherit; font-size: 12px; font-weight: 600; color: var(--blue); cursor: pointer; align-self: flex-start; }
+.link.danger { color: var(--red); margin-left: 10px; }
+.custom-tag { background: var(--purple-tint); color: var(--purple); margin-left: 10px; }

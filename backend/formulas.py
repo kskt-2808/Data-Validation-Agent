@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import custom_formulas
+import expressions
 from compute import (HOUR_MS, average_value, consumption_delta, coverage, integrate,
                      run_hours, time_weighted_average)
 
@@ -19,7 +21,8 @@ UNIT_CONVERSIONS = _REGISTRY["unitConversions"]
 COVERAGE_WARN = 0.90
 STATUSES = ("PASS", "WARN", "NO_DATA", "ERROR")
 # Kinds whose answer depends on how long a single reading is trusted.
-GAP_KINDS = ("delta", "threshold_time", "time_weighted_mean", "availability", "integrate")
+GAP_KINDS = ("delta", "threshold_time", "time_weighted_mean", "availability", "integrate",
+             "expression")
 
 _HEAD = [
     {"key": "date", "label": "Shift Date", "type": "text"},
@@ -68,6 +71,8 @@ def base_unit(formula: dict, target: dict, params: dict | None = None) -> str:
         return "h"
     if source == "percent":
         return "%"
+    if source == "fixed":
+        return (formula.get("unit") or {}).get("value") or target["unit"]
     if source == "label":
         # The sensor reads a rate; the total is in whatever the operator names.
         return params.get("outputUnitLabel") or target["unit"]
@@ -98,7 +103,7 @@ def _coverage_note(points, start_ms, end_ms, params, unknown_ms) -> list[str]:
             f"tolerance; not counted either way"]
 
 
-def _delta(points, start_ms, end_ms, target, params):
+def _delta(points, start_ms, end_ms, target, params, formula=None):
     factor = target["m"] / target["unitDivisor"]
     result = consumption_delta(points, start_ms, end_ms, factor)
     if result is None:
@@ -115,7 +120,7 @@ def _delta(points, start_ms, end_ms, target, params):
     return {**result, "factor": factor, **_status(notes)}
 
 
-def _threshold_time(points, start_ms, end_ms, target, params):
+def _threshold_time(points, start_ms, end_ms, target, params, formula=None):
     result = run_hours(points, start_ms, end_ms, target["threshold"], target["m"],
                        target["c"], params["maxGapMs"])
     if result is None:
@@ -132,7 +137,7 @@ def _threshold_time(points, start_ms, end_ms, target, params):
     }
 
 
-def _mean(points, start_ms, end_ms, target, params):
+def _mean(points, start_ms, end_ms, target, params, formula=None):
     result = average_value(points, start_ms, end_ms, target["m"], target["c"])
     if result is None:
         return {"status": "NO_DATA", "notes": ["No readings in the shift"]}
@@ -146,7 +151,7 @@ def _mean(points, start_ms, end_ms, target, params):
     }
 
 
-def _time_weighted_mean(points, start_ms, end_ms, target, params):
+def _time_weighted_mean(points, start_ms, end_ms, target, params, formula=None):
     result = time_weighted_average(points, start_ms, end_ms, target["m"], target["c"],
                                    params["maxGapMs"])
     if result is None:
@@ -163,7 +168,7 @@ def _time_weighted_mean(points, start_ms, end_ms, target, params):
     }
 
 
-def _availability(points, start_ms, end_ms, target, params):
+def _availability(points, start_ms, end_ms, target, params, formula=None):
     result = run_hours(points, start_ms, end_ms, target["threshold"], target["m"],
                        target["c"], params["maxGapMs"])
     if result is None:
@@ -182,7 +187,7 @@ def _availability(points, start_ms, end_ms, target, params):
     }
 
 
-def _load_factor(points, start_ms, end_ms, target, params):
+def _load_factor(points, start_ms, end_ms, target, params, formula=None):
     result = average_value(points, start_ms, end_ms, target["m"], target["c"])
     if result is None:
         return {"status": "NO_DATA", "notes": ["No readings in the shift"]}
@@ -199,7 +204,7 @@ def _load_factor(points, start_ms, end_ms, target, params):
     }
 
 
-def _integrate(points, start_ms, end_ms, target, params):
+def _integrate(points, start_ms, end_ms, target, params, formula=None):
     result = integrate(points, start_ms, end_ms, target["m"], target["c"],
                        params["maxGapMs"], params.get("rateBasisSeconds") or 3600)
     if result is None:
@@ -215,7 +220,76 @@ def _integrate(points, start_ms, end_ms, target, params):
     }
 
 
+def expression_context(points, start_ms, end_ms, target, params) -> tuple[dict, dict]:
+    """The values and functions a user-written expression may use for one shift."""
+    m, c, gap = target["m"], target["c"], params["maxGapMs"]
+    boundary = consumption_delta(points, start_ms, end_ms, 1.0)
+    readings = average_value(points, start_ms, end_ms, m, c)
+    weighted = time_weighted_average(points, start_ms, end_ms, m, c, gap)
+
+    def hours(threshold, above=True):
+        result = run_hours(points, start_ms, end_ms, threshold, m, c, gap)
+        if result is None:
+            raise expressions.NoData("hours_above" if above else "hours_below")
+        running = result["running_ms"] / HOUR_MS
+        return running if above else (result["known_ms"] / HOUR_MS) - running
+
+    def volume(basis=3600.0):
+        result = integrate(points, start_ms, end_ms, m, c, gap, basis or 3600.0)
+        if result is None:
+            raise expressions.NoData("integral")
+        return result["total"]
+
+    values = {
+        "first": boundary and boundary["first_value"] * m + c,
+        "last": boundary and boundary["last_value"] * m + c,
+        "delta": boundary and boundary["raw_delta"] * m,
+        "first_raw": boundary and boundary["first_value"],
+        "last_raw": boundary and boundary["last_value"],
+        "delta_raw": boundary and boundary["raw_delta"],
+        "mean": readings and readings["average"],
+        "twa": weighted and weighted["average"],
+        "min_reading": readings and readings["min"],
+        "max_reading": readings and readings["max"],
+        "samples": readings["samples"] if readings else 0,
+        "coverage": coverage(points, start_ms, end_ms, gap),
+        "known_hours": weighted and weighted["known_ms"] / HOUR_MS,
+        "unknown_hours": weighted and weighted["unknown_ms"] / HOUR_MS,
+        "shift_hours": (end_ms - start_ms) / HOUR_MS,
+        "m": m, "c": c,
+    }
+    functions = {
+        "hours_above": lambda x: hours(x, True),
+        "hours_below": lambda x: hours(x, False),
+        "integral": volume,
+        "abs": abs,
+        "round": round,
+    }
+    return values, functions
+
+
+def _expression(points, start_ms, end_ms, target, params, formula=None):
+    values, functions = expression_context(points, start_ms, end_ms, target, params)
+    try:
+        value = expressions.evaluate(formula["expression"], values, functions)
+    except expressions.NoData as missing:
+        return {"status": "NO_DATA", "samples": values["samples"],
+                "notes": [f"The shift has no {missing.args[0]} to compute with"]}
+    except expressions.ExpressionError as err:
+        return {"status": "ERROR", "notes": [str(err)]}
+    notes = _coverage_note(points, start_ms, end_ms, params,
+                           int((values["unknown_hours"] or 0) * HOUR_MS))
+    return {
+        "value": value,
+        "samples": values["samples"],
+        "known_hours": values["known_hours"],
+        "unknown_hours": values["unknown_hours"],
+        **_status(notes),
+    }
+
+
 EVALUATORS = {
+    "expression": _expression,
     "integrate": _integrate,
     "delta": _delta,
     "threshold_time": _threshold_time,
@@ -227,7 +301,16 @@ EVALUATORS = {
 
 
 def evaluate(formula: dict, points, start_ms: int, end_ms: int, target: dict, params: dict) -> dict:
-    return EVALUATORS[formula["compute"]](points, start_ms, end_ms, target, params)
+    return EVALUATORS[formula["compute"]](points, start_ms, end_ms, target, params, formula)
+
+
+def all_formulas(token: str = "") -> list[dict]:
+    """The built-in registry plus whatever users have written."""
+    return FORMULAS + [_publish(entry) for entry in custom_formulas.registry_entries(token)]
+
+
+def get(formula_id: str, token: str = "") -> dict | None:
+    return next((f for f in all_formulas(token) if f["id"] == formula_id), None)
 
 
 def summarize(rows: list[dict], formula: dict) -> list[dict]:

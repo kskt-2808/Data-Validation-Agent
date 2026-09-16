@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 
 from compute import clean, shift_windows
 from iosense import UpstreamError
-from formulas import FORMULAS_BY_ID, evaluate, resolve_unit, summarize
+from formulas import evaluate, get as get_formula, resolve_unit, summarize
 
 SITE_TZ = ZoneInfo(os.environ.get("SITE_TIMEZONE", "Asia/Kolkata"))
 SOURCE = "GET /api/account/deviceData/getDataCalibration/{devID}/{sensor}/{start}/{end}/false"
@@ -20,8 +20,8 @@ TIME_KEYS = ("first_time", "last_time")
 DEFAULT_GAP_MINUTES = 15
 
 
-def run_validation(client, devices_by_id: dict, body: dict) -> dict:
-    formula = FORMULAS_BY_ID.get(body.get("formula"))
+def run_validation(client, devices_by_id: dict, body: dict, token: str = "") -> dict:
+    formula = get_formula(body.get("formula") or "", token)
     if not formula or not formula.get("available"):
         raise ValueError(f"Unknown or unavailable formula: {body.get('formula')!r}")
 

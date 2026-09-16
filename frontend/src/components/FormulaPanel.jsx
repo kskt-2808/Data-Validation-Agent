@@ -1,5 +1,7 @@
 import { useState } from "react";
+import { api, AuthError } from "../api.js";
 import { isNumeric } from "../format.jsx";
+import CustomFormulaEditor from "./CustomFormulaEditor.jsx";
 
 // Everything here is rendered from what the formula declares in formulas.json:
 // its formula, its parameters and whether its unit can be converted.
@@ -7,6 +9,9 @@ export default function FormulaPanel({
   formulas,
   formula,
   onFormula,
+  expressionHelp,
+  onFormulasChanged,
+  onAuthLost,
   targets,
   targetParams,
   setTargetParams,
@@ -17,6 +22,22 @@ export default function FormulaPanel({
   mixedUnits,
 }) {
   const update = (key, patch) => setTargetParams((p) => ({ ...p, [key]: { ...p[key], ...patch } }));
+  const [writing, setWriting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  async function remove() {
+    if (!window.confirm(`Delete the custom formula "${formula.label}"? Reports already exported keep their numbers.`)) return;
+    setDeleting(true);
+    try {
+      await api.deleteFormula(formula.id);
+      onFormulasChanged("consumption_delta");
+    } catch (err) {
+      if (err instanceof AuthError) onAuthLost(err.message);
+      else window.alert(err.message);
+    } finally {
+      setDeleting(false);
+    }
+  }
   const runSpecs = formula.params.filter((p) => p.scope === "run");
   const targetSpecs = formula.params.filter((p) => p.scope === "target");
 
@@ -28,19 +49,42 @@ export default function FormulaPanel({
 
       <label className="field">
         <span className="label">Select formula</span>
-        <select value={formula.id} onChange={(e) => onFormula(e.target.value)}>
+        <select
+          value={formula.id}
+          onChange={(e) => (e.target.value === "__new__" ? setWriting(true) : onFormula(e.target.value))}
+        >
           {formulas.map((r) => (
             <option key={r.id} value={r.id} disabled={!r.available}>
               [{r.group}] {r.label}
               {r.available ? "" : " — coming soon"}
             </option>
           ))}
-          <option disabled>+ Register new custom formula… — coming soon</option>
+          <option value="__new__">+ Write a custom formula…</option>
         </select>
       </label>
 
+      {writing && (
+        <CustomFormulaEditor
+          help={expressionHelp}
+          onAuthLost={onAuthLost}
+          onCancel={() => setWriting(false)}
+          onSaved={(entry) => {
+            setWriting(false);
+            onFormulasChanged(entry.id);
+          }}
+        />
+      )}
+
       <div className="formula">
-        <span className="label">Active formula expression</span>
+        <span className="label">
+          Active formula expression
+          {formula.custom && <span className="tag custom-tag">custom — not reviewed</span>}
+          {formula.custom && formula.mine && (
+            <button type="button" className="link danger" disabled={deleting} onClick={remove}>
+              Delete
+            </button>
+          )}
+        </span>
         <code>{formula.expression}</code>
         <p className="muted small">{formula.method}</p>
       </div>
