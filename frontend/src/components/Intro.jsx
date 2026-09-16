@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Arrow, Bars, Bolt, Database, Document, Gauge, Grid, Layers, Lock, Logo, Pulse, ShieldCheck, Target, Trend } from "./Icons.jsx";
 
 // Cards come from the formula registry, so what the page advertises is what the
@@ -12,6 +12,13 @@ const CARD_COPY = {
   load_factor: { title: "Load Factor", blurb: "Average demand against the peak of the shift.", Icon: Trend },
 };
 
+// Carousel order is a product decision, not the registry's: energy validation is
+// the most-used check, so it sits mid-row with cards either side and opens selected.
+// Anything not listed here follows in registry order.
+const CARD_ORDER = ["time_weighted_avg", "average_value", "consumption_delta", "run_hours",
+                    "availability_ratio", "load_factor"];
+const DEFAULT_CARD = "consumption_delta";
+
 const ASSURANCES = [
   { Icon: ShieldCheck, tone: "blue", title: "Recomputed from raw", blurb: "Every figure comes from raw readings." },
   { Icon: Lock, tone: "green", title: "Your own session", blurb: "Signs in as you; stores no tokens." },
@@ -22,8 +29,22 @@ const ASSURANCES = [
 export default function Intro({ formulas, onStart, onPick }) {
   const cards = formulas
     .filter((r) => r.available)
-    .map((r) => ({ id: r.id, Icon: Grid, title: r.label.split(" (")[0], blurb: r.expression, ...CARD_COPY[r.id] }));
+    .map((r) => ({ id: r.id, Icon: Grid, title: r.label.split(" (")[0], blurb: r.expression, ...CARD_COPY[r.id] }))
+    .sort((a, b) => {
+      const rank = (id) => (CARD_ORDER.indexOf(id) + 1 || CARD_ORDER.length + 1);
+      return rank(a.id) - rank(b.id);
+    });
   const [active, setActive] = useState(0);
+
+  // Select the default before the first paint, so the carousel opens on it
+  // instead of visibly sliding there. Runs once: a later choice is the user's.
+  const defaulted = useRef(false);
+  useLayoutEffect(() => {
+    if (defaulted.current || !cards.length) return;
+    const index = cards.findIndex((card) => card.id === DEFAULT_CARD);
+    if (index >= 0) setActive(index);
+    defaulted.current = true;
+  }, [cards.length]);
   const step = (delta) => setActive((i) => (i + delta + cards.length) % cards.length);
   const trackRef = useRef(null);
   const viewportRef = useRef(null);
