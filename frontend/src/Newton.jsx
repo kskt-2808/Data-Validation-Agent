@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { api, AuthError } from "./api.js";
 import { isNumeric } from "./format.jsx";
 import Intro from "./components/Intro.jsx";
+import { Logo } from "./components/Icons.jsx";
 import MultiSelect from "./components/MultiSelect.jsx";
 import RecipePanel from "./components/RecipePanel.jsx";
 import Results from "./components/Results.jsx";
@@ -13,7 +14,7 @@ const SCOPES = [
 ];
 const PAGES = [
   { id: "intro", label: "Newton" },
-  { id: "setup", label: "Set up" },
+  { id: "setup", label: "Setup" },
   { id: "results", label: "Results" },
 ];
 
@@ -188,36 +189,42 @@ export default function Newton({ onAuthLost }) {
   const shiftCount = from && to && to >= from ? Math.round((new Date(to) - new Date(from)) / 86400000) + 1 : 0;
 
   return (
-    <div className="page">
+    <div className="app">
       <header className="topbar">
-        <div className="brand">
-          <span className="logo">iosense</span>
-          <span className="divider">|</span>
-          <strong>NEWTON</strong>
-          <span className="muted">— Data Validation Agent</span>
-        </div>
+        <Logo className="brand-mark" />
         <nav className="stepper" aria-label="Pages">
           {PAGES.map((p, i) => (
-            <button
-              key={p.id}
-              type="button"
-              className={`step-tab${page === p.id ? " on" : ""}`}
-              disabled={p.id === "results" && !result}
-              onClick={() => setPage(p.id)}
-            >
-              <span className="num">{i + 1}</span>
-              {p.label}
-            </button>
+            <Fragment key={p.id}>
+              {i > 0 && <span className="step-dash" aria-hidden="true" />}
+              <button
+                type="button"
+                className={`step-tab${page === p.id ? " on" : ""}`}
+                disabled={p.id === "results" && !result}
+                onClick={() => setPage(p.id)}
+              >
+                <span className="num">{i + 1}</span>
+                <span>{p.label}</span>
+              </button>
+            </Fragment>
           ))}
         </nav>
       </header>
 
       {loadError && <div className="alert error">{loadError}</div>}
 
-      {page === "intro" && <Intro recipes={recipes} onStart={() => setPage("setup")} />}
+      {page === "intro" && (
+        <Intro
+          recipes={recipes}
+          onStart={() => setPage("setup")}
+          onPick={(id) => {
+            setRecipeId(id);
+            setPage("setup");
+          }}
+        />
+      )}
 
       {page === "setup" && (
-        <>
+        <div className="page">
           <section className="card">
             <h2>
               <span className="step">1</span>Target selection
@@ -310,21 +317,21 @@ export default function Newton({ onAuthLost }) {
             {blocker && <p className="muted small">{blocker}</p>}
             {runError && <div className="alert error">{runError}</div>}
           </div>
-        </>
+        </div>
       )}
 
       {page === "results" &&
         (result ? (
-          <>
+          <div className="page">
             <Results result={result} onAuthLost={onAuthLost} />
             <div className="page-actions">
               <button className="btn" type="button" onClick={() => setPage("setup")}>
                 ← Back to setup
               </button>
             </div>
-          </>
+          </div>
         ) : (
-          <p className="muted">Run a validation to see results.</p>
+          <p className="page muted">Run a validation to see results.</p>
         ))}
     </div>
   );
