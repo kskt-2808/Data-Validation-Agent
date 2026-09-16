@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -102,3 +103,22 @@ class WebhookPayload(unittest.TestCase):
         for url in (self.TEAMS, self.SLACK):
             payload = feedback.build_payload({"rating": 5, "comment": "", "formula": None}, url)
             self.assertTrue(payload)
+
+
+class Settings(unittest.TestCase):
+    def tearDown(self):
+        for key in list(os.environ):
+            if key.lower().startswith("feedback_test"):
+                del os.environ[key]
+
+    def test_exact_name_wins(self):
+        os.environ["FEEDBACK_TEST_KEY"] = "exact"
+        os.environ["Feedback_Test_Key"] = "other"
+        self.assertEqual(feedback.setting("FEEDBACK_TEST_KEY"), "exact")
+
+    def test_wrong_case_is_still_found(self):
+        os.environ["Feedback_Test_Key"] = "typed by hand"
+        self.assertEqual(feedback.setting("FEEDBACK_TEST_KEY"), "typed by hand")
+
+    def test_missing_returns_the_default(self):
+        self.assertEqual(feedback.setting("FEEDBACK_TEST_ABSENT", "fallback"), "fallback")

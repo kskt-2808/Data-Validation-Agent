@@ -24,10 +24,27 @@ import requests
 
 from validation import SITE_TZ
 
-STORE = Path(os.environ.get("FEEDBACK_FILE", Path.home() / "newton-feedback" / "feedback.jsonl"))
-WEBHOOK_URL = os.environ.get("FEEDBACK_WEBHOOK_URL", "").strip()
-ADMIN_KEY = os.environ.get("FEEDBACK_ADMIN_KEY", "").strip()
-WEBHOOK_FORMAT = os.environ.get("FEEDBACK_WEBHOOK_FORMAT", "").strip().lower()
+def setting(name: str, default: str = "") -> str:
+    """Read a setting, forgiving the case of the key.
+
+    Settings are typed by hand into AI Studio Manager's Env Config, and a key
+    like Feedback_webhook_URL would otherwise be ignored in silence, because
+    environment variables are case-sensitive.
+    """
+    if name in os.environ:
+        return os.environ[name]
+    for key, value in os.environ.items():
+        if key.lower() == name.lower():
+            print(f"Using {key} for {name}: the name is read case-insensitively, "
+                  f"but rename it to {name} to be explicit.")
+            return value
+    return default
+
+
+STORE = Path(setting("FEEDBACK_FILE") or Path.home() / "newton-feedback" / "feedback.jsonl")
+WEBHOOK_URL = setting("FEEDBACK_WEBHOOK_URL").strip()
+ADMIN_KEY = setting("FEEDBACK_ADMIN_KEY").strip()
+WEBHOOK_FORMAT = setting("FEEDBACK_WEBHOOK_FORMAT").strip().lower()
 # Teams Workflows (Power Automate) replaced the retired Office 365 connectors and
 # expects an Adaptive Card. Slack and the old connectors take {"text": ...}.
 CARD_HOSTS = ("logic.azure.com", "logic.azure.us", "powerautomate.com", "powerplatform.com")
@@ -37,6 +54,9 @@ COLUMNS = ("time", "rating", "comment", "formula", "from", "to", "shift", "targe
            "shifts", "pass", "warn", "noData", "error", "submitter")
 
 _lock = threading.Lock()
+
+print(f"Feedback: storing in {STORE}; webhook "
+      f"{'configured (' + ('card' if WEBHOOK_URL and any(h in WEBHOOK_URL for h in CARD_HOSTS) else 'text') + ' format)' if WEBHOOK_URL else 'NOT configured — set FEEDBACK_WEBHOOK_URL'}")
 
 
 def record(body: dict, token: str = "") -> dict:
