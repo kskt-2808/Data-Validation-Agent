@@ -32,6 +32,22 @@ The deploy server keeps its own clone of the repo and does not pull on a
 first Deploy. After pushing, use **Update deployment** (it pulls, then
 redeploys), or the deploy will build an old or empty checkout.
 
+### Feedback settings
+
+The Results page collects a rating and a note. Each submission appends to a
+JSON-lines file and, if a webhook is set, posts to Teams or Slack.
+
+| Variable | Meaning |
+|---|---|
+| `FEEDBACK_FILE` | Where to append. Default `~/newton-feedback/feedback.jsonl` — outside the repo, so a redeploy cannot erase it. |
+| `FEEDBACK_WEBHOOK_URL` | Teams or Slack incoming webhook. Both accept the same payload. A failed post never loses the entry; the file is the record. |
+| `FEEDBACK_ADMIN_KEY` | Enables `GET /api/feedback/export.csv?key=…`. Unset means the export returns 404. |
+
+Stored with each submission: the rating, the note, and the run it came from
+(recipe, date range, shift, how many device-sensor pairs, and the PASS / WARN /
+NO DATA / ERROR counts), plus a one-way hash of the submitter's token so repeat
+senders can be recognised. Never the token, and never the readings.
+
 ### Anywhere else
 
 ```bash

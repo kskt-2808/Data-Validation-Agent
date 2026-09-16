@@ -6,6 +6,7 @@ import { Logo } from "./components/Icons.jsx";
 import MultiSelect from "./components/MultiSelect.jsx";
 import RecipePanel from "./components/RecipePanel.jsx";
 import Results from "./components/Results.jsx";
+import Feedback from "./components/Feedback.jsx";
 
 const SCOPES = [
   { id: "devices", label: "Devices (Multi)", available: true },
@@ -324,6 +325,7 @@ export default function Newton({ onAuthLost }) {
         (result ? (
           <div className="page">
             <Results result={result} onAuthLost={onAuthLost} />
+            <Feedback result={result} onAuthLost={onAuthLost} />
             <div className="page-actions">
               <button className="btn" type="button" onClick={() => setPage("setup")}>
                 ← Back to setup

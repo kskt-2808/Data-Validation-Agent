@@ -221,3 +221,19 @@ td.status { min-width: 96px; }
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
+
+/* Feedback */
+.feedback h2 { margin-bottom: 16px; }
+.feedback.sent p { margin: 0; max-width: 70ch; }
+.faces { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 22px; }
+.face { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 96px; padding: 14px 10px 12px; font: inherit; font-size: 12px; font-weight: 600; color: var(--muted); background: #fff; border: 1px solid var(--line); border-radius: var(--radius); cursor: pointer; transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, color 0.18s ease; }
+.face svg { width: 42px; height: 42px; }
+.face:hover { transform: translateY(-2px); border-color: #cddcff; }
+.face.on { color: #fff; border-color: transparent; }
+.face.on.bad { background: var(--red); }
+.face.on.mid { background: #6b7a99; }
+.face.on.good { background: var(--green); }
+.idea textarea { font: inherit; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; resize: vertical; min-height: 96px; }
+.idea textarea:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.feedback-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+.feedback-actions .help { margin: 0; flex: 1 1 320px; }

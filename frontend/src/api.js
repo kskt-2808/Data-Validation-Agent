@@ -60,4 +60,5 @@ export const api = {
   recipes: () => request("recipes"),
   validate: (body) => request("validate", { method: "POST", body }),
   exportExcel: (result) => request("export", { method: "POST", body: result, raw: true }),
+  feedback: (body) => request("feedback", { method: "POST", body }),
 };

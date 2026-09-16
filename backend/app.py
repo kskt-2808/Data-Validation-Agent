@@ -7,8 +7,9 @@ import time
 from io import BytesIO
 from pathlib import Path
 
-from flask import Flask, jsonify, request, send_file, send_from_directory
+from flask import Flask, Response, jsonify, request, send_file, send_from_directory
 
+import feedback as feedback_store
 import iosense
 from recipes import RECIPES, UNIT_CONVERSIONS
 from report import build_workbook, filename
@@ -99,6 +100,22 @@ def export():
     return send_file(BytesIO(build_workbook(result)), as_attachment=True,
                      download_name=filename(result),
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+@app.post("/api/feedback")
+def feedback():
+    body = request.get_json(silent=True) or {}
+    entry = feedback_store.record(body, request.headers.get("Authorization", ""))
+    return jsonify(ok=True, time=entry["time"])
+
+
+@app.get("/api/feedback/export.csv")
+def feedback_export():
+    # Off unless FEEDBACK_ADMIN_KEY is set; a wrong key looks like a missing page.
+    if not feedback_store.ADMIN_KEY or request.args.get("key") != feedback_store.ADMIN_KEY:
+        return jsonify(error="Not found"), 404
+    return Response(feedback_store.export_csv(), mimetype="text/csv",
+                    headers={"Content-Disposition": "attachment; filename=newton-feedback.csv"})
 
 
 @app.get("/", defaults={"path": ""})
