@@ -48,10 +48,10 @@ def _summary_sheet(ws, result: dict) -> None:
         ws.append([f"Figures in {unit}" if unit else "Figures"])
         ws.cell(ws.max_row, 1).font = Font(bold=True)
         if recipe["aggregate"] == "sum":
-            ws.append([recipe["totalLabel"], group["total"], unit])
-        ws.append([recipe["avgLabel"], group["mean"], unit])
+            ws.append([recipe["labels"]["total"], group["total"], unit])
+        ws.append([recipe["labels"]["avg"], group["mean"], unit])
         peak = group["peak"]
-        ws.append([recipe["peakLabel"], peak and peak["value"], unit,
+        ws.append([recipe["labels"]["peak"], peak and peak["value"], unit,
                    peak and f"{peak['date']} · {peak['devID']} / {peak['sensor']}"])
         c = group["counts"]
         ws.append(["Valid shifts", c["PASS"] + c["WARN"], "", f"{c['WARN']} with warnings"])
@@ -122,9 +122,9 @@ def _method_sheet(ws, result: dict) -> None:
                         "(see the m, c and Factor Source columns on the Ledger sheet)."),
         ("Shift window", f"{p['shift']} in {result['timezone']}, half-open [start, end): a reading "
                          "stamped exactly at the end belongs to the next shift."),
-        ("Max gap", f"{p['maxGapMinutes']:g} min. A reading holds for at most this long; longer "
-                    "silences count as unknown time."),
-        ("Unit scale", f"÷ {p['unitScale']}" if p["unitScale"] != 1 else "none (native unit)"),
+        ("Gap tolerance", f"{p.get('maxGapMinutes') or 15:g} min. A reading is trusted for at "
+                          "most this long; longer silences count as unknown time."),
+        ("Output unit", p.get("outputUnit") or "native (the sensor's own unit)"),
         ("Statuses", "PASS = computed with no concerns. WARN = computed, but see Notes. "
                      "NO DATA = not enough readings to compute (never reported as zero). "
                      "ERROR = the platform did not return a usable response."),

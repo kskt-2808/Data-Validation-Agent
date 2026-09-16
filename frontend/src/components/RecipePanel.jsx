@@ -1,22 +1,24 @@
 import { useState } from "react";
 import { isNumeric } from "../format.jsx";
 
+// Everything here is rendered from what the recipe declares in recipes.json:
+// its formula, its parameters and whether its unit can be converted.
 export default function RecipePanel({
   recipes,
   recipe,
   onRecipe,
   targets,
-  overrides,
-  setOverrides,
-  unitScale,
-  setUnitScale,
-  maxGapMinutes,
-  setMaxGapMinutes,
+  targetParams,
+  setTargetParams,
+  runParams,
+  setRunParams,
+  baseUnit,
+  unitOptions,
+  mixedUnits,
 }) {
-  const [allThreshold, setAllThreshold] = useState("");
-  const update = (key, patch) => setOverrides((o) => ({ ...o, [key]: { ...o[key], ...patch } }));
-  const effectiveM = (t) => (overrides[t.key]?.overrideFactor ? Number(overrides[t.key].m) : t.sensor.m);
-  const doubleScaling = recipe.usesUnitScale && unitScale !== 1 && targets.some((t) => effectiveM(t) !== 1);
+  const update = (key, patch) => setTargetParams((p) => ({ ...p, [key]: { ...p[key], ...patch } }));
+  const runSpecs = recipe.params.filter((p) => p.scope === "run");
+  const targetSpecs = recipe.params.filter((p) => p.scope === "target");
 
   return (
     <section className="card">
@@ -43,40 +45,55 @@ export default function RecipePanel({
         <p className="muted small">{recipe.method}</p>
       </div>
 
-      <div className="row wrap params-top">
-        {recipe.usesUnitScale && (
-          <div className="inline" role="radiogroup" aria-label="Unit normalization">
-            <span>Unit normalization</span>
-            <label className="radio">
-              <input type="radio" checked={unitScale === 1} onChange={() => setUnitScale(1)} /> Native unit
-            </label>
-            <label className="radio">
-              <input type="radio" checked={unitScale === 1000} onChange={() => setUnitScale(1000)} /> ÷ 1000 (Wh → kWh)
-            </label>
-          </div>
-        )}
-        <label className="inline">
-          <span>Max gap</span>
-          <input
-            type="number"
-            min="1"
-            step="1"
-            className="narrow"
-            value={maxGapMinutes}
-            onChange={(e) => setMaxGapMinutes(e.target.value)}
-          />
-          <span className="muted small">min — a reading counts for at most this long</span>
-        </label>
-      </div>
-      {doubleScaling && (
-        <div className="alert warn">
-          Some sensors already have m ≠ 1. If m converts Wh to kWh, dividing by 1000 again under-reports by 1000×.
+      {runSpecs.length > 0 && (
+        <div className="run-params">
+          {runSpecs.map((spec) => (
+            <div className="param" key={spec.key}>
+              <label>
+                <span className="label">{spec.label}</span>
+                {spec.type === "unit" ? (
+                  <select
+                    value={runParams.outputUnit || ""}
+                    disabled={!unitOptions.length}
+                    onChange={(e) => setRunParams((p) => ({ ...p, outputUnit: e.target.value }))}
+                  >
+                    <option value="">Native{baseUnit ? ` (${baseUnit})` : ""}</option>
+                    {unitOptions.map((u) => (
+                      <option key={u} value={u}>
+                        {u}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="number"
+                    step="any"
+                    min={spec.min}
+                    max={spec.max}
+                    className="narrow"
+                    placeholder={spec.default ?? "auto"}
+                    value={runParams[spec.key] ?? ""}
+                    onChange={(e) => setRunParams((p) => ({ ...p, [spec.key]: e.target.value }))}
+                  />
+                )}
+              </label>
+              <p className="help">
+                {spec.type === "unit" && mixedUnits
+                  ? "The selected sensors report in different units, so only their own units can be used."
+                  : spec.type === "unit" && !unitOptions.length && baseUnit
+                    ? `No conversions are defined for ${baseUnit}.`
+                    : spec.help}
+              </p>
+            </div>
+          ))}
         </div>
       )}
 
-      <span className="label">Dynamic parameters</span>
+      <span className="label">Per-device parameters</span>
       {!targets.length ? (
-        <p className="muted small">Choose devices and sensors to set calibration{recipe.needsThreshold ? " and thresholds" : ""}.</p>
+        <p className="muted small">
+          Choose devices and sensors to set calibration{targetSpecs.length ? " and thresholds" : ""}.
+        </p>
       ) : (
         <div className="table-wrap">
           <table className="params">
@@ -87,35 +104,17 @@ export default function RecipePanel({
                 <th className="num">Calibration m</th>
                 <th className="num">c</th>
                 <th>Override</th>
-                {recipe.needsThreshold && (
-                  <th>
-                    Run threshold (≥)
-                    <span className="apply-all">
-                      <input
-                        type="number"
-                        step="any"
-                        className="narrow"
-                        placeholder="all"
-                        aria-label="Threshold for all devices"
-                        value={allThreshold}
-                        onChange={(e) => setAllThreshold(e.target.value)}
-                      />
-                      <button
-                        type="button"
-                        className="btn small"
-                        disabled={!isNumeric(allThreshold)}
-                        onClick={() => targets.forEach((t) => update(t.key, { threshold: allThreshold }))}
-                      >
-                        Apply to all
-                      </button>
-                    </span>
+                {targetSpecs.map((spec) => (
+                  <th key={spec.key}>
+                    {spec.label}
+                    <ApplyToAll spec={spec} targets={targets} update={update} />
                   </th>
-                )}
+                ))}
               </tr>
             </thead>
             <tbody>
               {targets.map((t) => {
-                const o = overrides[t.key] || {};
+                const values = targetParams[t.key] || {};
                 return (
                   <tr key={t.key}>
                     <td>{t.devID}</td>
@@ -124,8 +123,15 @@ export default function RecipePanel({
                       {t.sensor.unit && <span className="muted"> ({t.sensor.unit})</span>}
                     </td>
                     <td className="num">
-                      {o.overrideFactor ? (
-                        <input type="number" step="any" className="narrow" aria-label={`m for ${t.key}`} value={o.m} onChange={(e) => update(t.key, { m: e.target.value })} />
+                      {values.overrideFactor ? (
+                        <input
+                          type="number"
+                          step="any"
+                          className="narrow"
+                          aria-label={`m for ${t.key}`}
+                          value={values.m}
+                          onChange={(e) => update(t.key, { m: e.target.value })}
+                        />
                       ) : (
                         <>
                           {t.sensor.m} <span className="tag">auto</span>
@@ -133,8 +139,15 @@ export default function RecipePanel({
                       )}
                     </td>
                     <td className="num">
-                      {o.overrideFactor ? (
-                        <input type="number" step="any" className="narrow" aria-label={`c for ${t.key}`} value={o.c} onChange={(e) => update(t.key, { c: e.target.value })} />
+                      {values.overrideFactor ? (
+                        <input
+                          type="number"
+                          step="any"
+                          className="narrow"
+                          aria-label={`c for ${t.key}`}
+                          value={values.c}
+                          onChange={(e) => update(t.key, { c: e.target.value })}
+                        />
                       ) : (
                         t.sensor.c
                       )}
@@ -143,26 +156,31 @@ export default function RecipePanel({
                       <input
                         type="checkbox"
                         aria-label={`Override calibration for ${t.key}`}
-                        checked={!!o.overrideFactor}
+                        checked={!!values.overrideFactor}
                         onChange={(e) =>
-                          update(t.key, e.target.checked ? { overrideFactor: true, m: o.m ?? t.sensor.m, c: o.c ?? t.sensor.c } : { overrideFactor: false })
+                          update(
+                            t.key,
+                            e.target.checked
+                              ? { overrideFactor: true, m: values.m ?? t.sensor.m, c: values.c ?? t.sensor.c }
+                              : { overrideFactor: false },
+                          )
                         }
                       />
                     </td>
-                    {recipe.needsThreshold && (
-                      <td>
+                    {targetSpecs.map((spec) => (
+                      <td key={spec.key}>
                         <input
                           type="number"
                           step="any"
                           className="narrow"
-                          placeholder="e.g. 140"
-                          aria-label={`Threshold for ${t.key}`}
-                          value={o.threshold ?? ""}
-                          onChange={(e) => update(t.key, { threshold: e.target.value })}
+                          placeholder={spec.required ? "required" : "optional"}
+                          aria-label={`${spec.label} for ${t.key}`}
+                          value={values[spec.key] ?? ""}
+                          onChange={(e) => update(t.key, { [spec.key]: e.target.value })}
                         />{" "}
-                        <span className="muted small">{t.sensor.unit}</span>
+                        {spec.unitFrom === "sensor" && <span className="muted small">{t.sensor.unit}</span>}
                       </td>
-                    )}
+                    ))}
                   </tr>
                 );
               })}
@@ -170,6 +188,36 @@ export default function RecipePanel({
           </table>
         </div>
       )}
+      {targetSpecs.map((spec) => (
+        <p className="help" key={spec.key}>
+          <strong>{spec.label}:</strong> {spec.help}
+        </p>
+      ))}
     </section>
+  );
+}
+
+function ApplyToAll({ spec, targets, update }) {
+  const [value, setValue] = useState("");
+  return (
+    <span className="apply-all">
+      <input
+        type="number"
+        step="any"
+        className="narrow"
+        placeholder="all"
+        aria-label={`${spec.label} for all devices`}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+      />
+      <button
+        type="button"
+        className="btn small"
+        disabled={!isNumeric(value)}
+        onClick={() => targets.forEach((t) => update(t.key, { [spec.key]: value }))}
+      >
+        Apply to all
+      </button>
+    </span>
   );
 }

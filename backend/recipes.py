@@ -1,16 +1,25 @@
-"""Compute-logic registry ("recipes").
+"""Compute-logic registry.
 
-A recipe is metadata the UI renders (label, formula, ledger columns, which
-inputs it needs) plus an evaluator that turns one shift's readings into ledger
-fields. Registering a calculation means adding an entry to RECIPES and, once it
-is available, an evaluator in EVALUATORS.
+Recipes are declared in recipes.json: label, formula, ledger columns and the
+parameters the UI renders. Each names a `compute` kind implemented here, so
+adding a calculation that reuses an existing kind is a JSON edit only — the UI
+renders whatever the registry declares.
 """
 from __future__ import annotations
 
-from compute import HOUR_MS, consumption_delta, coverage, run_hours, time_weighted_average
+import json
+from pathlib import Path
+
+from compute import (HOUR_MS, average_value, consumption_delta, coverage, run_hours,
+                     time_weighted_average)
+
+_REGISTRY = json.loads((Path(__file__).parent / "recipes.json").read_text())
+UNIT_CONVERSIONS = _REGISTRY["unitConversions"]
 
 COVERAGE_WARN = 0.90
 STATUSES = ("PASS", "WARN", "NO_DATA", "ERROR")
+# Kinds whose answer depends on how long a single reading is trusted.
+GAP_KINDS = ("delta", "threshold_time", "time_weighted_mean", "availability")
 
 _HEAD = [
     {"key": "date", "label": "Shift Date", "type": "text"},
@@ -20,159 +29,184 @@ _HEAD = [
 ]
 _STATUS = [{"key": "status", "label": "Status", "type": "status"}]
 
-RECIPES = [
-    {
-        "id": "consumption_delta", "group": "EMS", "available": True,
-        "label": "Energy Consumption Delta (Last DP − First DP)",
-        "formula": "Delta = (Last_Reading − First_Reading) × m ÷ unit_scale",
-        "method": (
-            "Uses raw readings inside the shift window [start, end). Readings below 0 are the "
-            "meter's no-reading sentinel and are dropped. Consumption is the last valid reading "
-            "minus the first, times m (c cancels in a difference). Fewer than two valid "
-            "readings is NO DATA, never zero."
-        ),
-        "aggregate": "sum", "needsThreshold": False, "usesUnitScale": True,
-        "totalLabel": "Total consumption", "avgLabel": "Average per shift", "peakLabel": "Peak shift",
-        "columns": _HEAD + [
-            {"key": "first_value", "label": "First Point (DP1)", "type": "number", "timeKey": "first_time"},
-            {"key": "last_value", "label": "Last Point (DP2)", "type": "number", "timeKey": "last_time"},
-            {"key": "raw_delta", "label": "Raw Delta", "type": "number"},
-            {"key": "factor", "label": "Factor", "type": "factor"},
-            {"key": "value", "label": "Computed Output", "type": "output"},
-        ] + _STATUS,
-    },
-    {
-        "id": "run_hours", "group": "OEE", "available": True,
-        "label": "Run-Hours Duration (Threshold Time Sum)",
-        "formula": "Run-Hours = Σ interval where (reading × m + c) ≥ threshold",
-        "method": (
-            "Each raw reading holds until the next one, for at most the max gap. Time where the "
-            "calibrated reading is at or above the device's threshold counts as running. Time "
-            "with no reading inside the max gap is Unknown and counts as neither running nor "
-            "stopped, so Run + Stopped + Unknown = shift length. Computed from raw readings, "
-            "not the platform's run-time endpoint, whose output has not been validated."
-        ),
-        "aggregate": "sum", "needsThreshold": True, "usesUnitScale": False,
-        "totalLabel": "Total run-hours", "avgLabel": "Average run-hours per shift",
-        "peakLabel": "Longest-running shift",
-        "columns": _HEAD + [
-            {"key": "threshold", "label": "Threshold", "type": "number"},
-            {"key": "value", "label": "Run Hours", "type": "output"},
-            {"key": "stopped_hours", "label": "Stopped Hours", "type": "number"},
-            {"key": "unknown_hours", "label": "Unknown Hours", "type": "number"},
-            {"key": "samples", "label": "Samples", "type": "integer"},
-        ] + _STATUS,
-    },
-    {
-        "id": "time_weighted_avg", "group": "Telemetry", "available": True,
-        "label": "Time-Weighted Average (Avg Current, Avg PF)",
-        "formula": "Avg = Σ((reading × m + c) × interval) ÷ Σ interval",
-        "method": (
-            "Each calibrated reading is weighted by how long it held, capped at the max gap. "
-            "Unknown time is excluded from the average rather than treated as zero."
-        ),
-        "aggregate": "mean", "needsThreshold": False, "usesUnitScale": False,
-        "totalLabel": "", "avgLabel": "Mean of shift averages", "peakLabel": "Highest shift average",
-        "columns": _HEAD + [
-            {"key": "value", "label": "Average", "type": "output"},
-            {"key": "min", "label": "Min", "type": "number"},
-            {"key": "max", "label": "Max", "type": "number"},
-            {"key": "known_hours", "label": "Known Hours", "type": "number"},
-            {"key": "samples", "label": "Samples", "type": "integer"},
-        ] + _STATUS,
-    },
-    {
-        "id": "availability_ratio", "group": "OEE / Future", "available": False,
-        "label": "Availability Ratio (Run-Hours / Planned Hours)",
-    },
-    {
-        "id": "specific_energy", "group": "EMS / Future", "available": False,
-        "label": "Specific Energy Consumption (kWh / Output Units)",
-    },
-]
+_OUTPUT_UNIT_PARAM = {
+    "key": "outputUnit", "scope": "run", "type": "unit", "label": "Output unit",
+    "help": "Show the result in another unit of the same kind — Wh in kWh, A in mA, "
+            "hours in minutes. Native keeps the sensor's own unit. Thresholds stay in "
+            "the sensor's unit either way.",
+}
+_GAP_PARAM = {
+    "key": "maxGapMinutes", "scope": "run", "type": "number", "label": "Gap tolerance (minutes)",
+    "default": 15, "min": 1, "max": 1440,
+    "help": "If a device stops sending readings, Newton trusts its last reading for this "
+            "long. Time beyond that is counted as Unknown — neither running nor stopped — "
+            "instead of being guessed, and the shift is flagged.",
+}
+
+
+def _publish(recipe: dict) -> dict:
+    """Registry entry plus the standard columns and parameters every recipe gets."""
+    published = dict(recipe)
+    published["columns"] = _HEAD + list(recipe.get("columns") or []) + _STATUS
+    standard = []
+    if (recipe.get("unit") or {}).get("convertible"):
+        standard.append(_OUTPUT_UNIT_PARAM)
+    if recipe.get("compute") in GAP_KINDS:
+        standard.append(_GAP_PARAM)
+    published["params"] = standard + list(recipe.get("params") or [])
+    return published
+
+
+RECIPES = [_publish(r) for r in _REGISTRY["recipes"]]
 RECIPES_BY_ID = {r["id"]: r for r in RECIPES}
 
 
-def scaled_unit(unit: str, scale: float) -> str:
-    if scale == 1 or not unit:
-        return unit
-    if scale == 1000:
-        return "M" + unit[1:] if unit.startswith("k") else "k" + unit
-    return f"{unit} ÷ {scale:g}"
-
-
-def output_unit(recipe: dict, target: dict, params: dict) -> str:
-    if recipe["id"] == "run_hours":
+def base_unit(recipe: dict, target: dict) -> str:
+    source = (recipe.get("unit") or {}).get("source")
+    if source == "hours":
         return "h"
-    if recipe.get("usesUnitScale"):
-        return scaled_unit(target["unit"], params["unitScale"])
+    if source == "percent":
+        return "%"
     return target["unit"]
+
+
+def resolve_unit(recipe: dict, target: dict, params: dict) -> tuple[str, float]:
+    """(unit the report shows, divisor that converts the native value into it)."""
+    base = base_unit(recipe, target)
+    chosen = params.get("outputUnit")
+    if not chosen or chosen == base:
+        return base, 1.0
+    factor = (UNIT_CONVERSIONS.get(base) or {}).get(chosen)
+    if not factor:
+        raise ValueError(f"{target['devID']} / {target['sensor']} reports in "
+                         f"{base or 'no unit'}, which cannot be shown as {chosen}")
+    return chosen, float(factor)
 
 
 def _status(notes: list[str]) -> dict:
     return {"status": "WARN" if notes else "PASS", "notes": notes}
 
 
-def _consumption(points, start_ms, end_ms, target, params):
-    factor = target["m"] / params["unitScale"]
-    r = consumption_delta(points, start_ms, end_ms, factor)
-    if r is None:
+def _coverage_note(points, start_ms, end_ms, params, unknown_ms) -> list[str]:
+    if (end_ms - start_ms - unknown_ms) / (end_ms - start_ms) >= COVERAGE_WARN:
+        return []
+    return [f"{unknown_ms / HOUR_MS:.2f} h of the shift has no reading within the gap "
+            f"tolerance; not counted either way"]
+
+
+def _delta(points, start_ms, end_ms, target, params):
+    factor = target["m"] / target["unitDivisor"]
+    result = consumption_delta(points, start_ms, end_ms, factor)
+    if result is None:
         return {"status": "NO_DATA", "factor": factor,
                 "notes": ["Fewer than two valid readings in the shift"]}
     notes = []
-    if r["raw_delta"] < 0 or r["decreases"]:
-        notes.append(f"Reading went down {r['decreases']} time(s) inside the shift "
+    if result["raw_delta"] < 0 or result["decreases"]:
+        notes.append(f"Reading went down {result['decreases']} time(s) inside the shift "
                      "(meter reset or rollover?)")
-    edge_gap = max(r["first_time"] - start_ms, end_ms - r["last_time"])
+    edge_gap = max(result["first_time"] - start_ms, end_ms - result["last_time"])
     if edge_gap > params["maxGapMs"]:
-        notes.append(f"Readings start or stop {edge_gap / 60_000:.0f} min from a shift edge; "
-                     "consumption in that time is missing")
-    return {**r, "factor": factor, **_status(notes)}
+        notes.append(f"Readings start or stop {edge_gap / 60_000:.0f} min from a shift "
+                     "edge; consumption in that time is missing")
+    return {**result, "factor": factor, **_status(notes)}
 
 
-def _run_hours(points, start_ms, end_ms, target, params):
-    r = run_hours(points, start_ms, end_ms, target["threshold"], target["m"], target["c"],
-                  params["maxGapMs"])
-    if r is None:
+def _threshold_time(points, start_ms, end_ms, target, params):
+    result = run_hours(points, start_ms, end_ms, target["threshold"], target["m"],
+                       target["c"], params["maxGapMs"])
+    if result is None:
         return {"status": "NO_DATA", "notes": ["No readings in the shift"]}
-    notes = []
-    if r["known_ms"] / (end_ms - start_ms) < COVERAGE_WARN:
-        notes.append(f"{r['unknown_ms'] / HOUR_MS:.2f} h of the shift has no reading; "
-                     "not counted as running or stopped")
+    divisor = target["unitDivisor"]
+    notes = _coverage_note(points, start_ms, end_ms, params, result["unknown_ms"])
+    stopped_ms = result["known_ms"] - result["running_ms"]
     return {
-        "value": r["running_ms"] / HOUR_MS,
-        "stopped_hours": (r["known_ms"] - r["running_ms"]) / HOUR_MS,
-        "unknown_hours": r["unknown_ms"] / HOUR_MS,
-        "samples": r["samples"],
+        "value": result["running_ms"] / HOUR_MS / divisor,
+        "stopped_hours": stopped_ms / HOUR_MS / divisor,
+        "unknown_hours": result["unknown_ms"] / HOUR_MS / divisor,
+        "samples": result["samples"],
         **_status(notes),
     }
 
 
-def _time_weighted_avg(points, start_ms, end_ms, target, params):
-    r = time_weighted_average(points, start_ms, end_ms, target["m"], target["c"],
-                              params["maxGapMs"])
-    if r is None:
+def _mean(points, start_ms, end_ms, target, params):
+    result = average_value(points, start_ms, end_ms, target["m"], target["c"])
+    if result is None:
         return {"status": "NO_DATA", "notes": ["No readings in the shift"]}
-    notes = []
-    cov = coverage(points, start_ms, end_ms, params["maxGapMs"])
-    if cov < COVERAGE_WARN:
-        notes.append(f"Readings cover {cov:.0%} of the shift; the average uses known time only")
+    divisor = target["unitDivisor"]
     return {
-        "value": r["average"], "min": r["min"], "max": r["max"],
-        "known_hours": r["known_ms"] / HOUR_MS, "samples": r["samples"],
+        "value": result["average"] / divisor,
+        "min": result["min"] / divisor,
+        "max": result["max"] / divisor,
+        "samples": result["samples"],
+        **_status([]),
+    }
+
+
+def _time_weighted_mean(points, start_ms, end_ms, target, params):
+    result = time_weighted_average(points, start_ms, end_ms, target["m"], target["c"],
+                                   params["maxGapMs"])
+    if result is None:
+        return {"status": "NO_DATA", "notes": ["No readings in the shift"]}
+    divisor = target["unitDivisor"]
+    notes = _coverage_note(points, start_ms, end_ms, params, result["unknown_ms"])
+    return {
+        "value": result["average"] / divisor,
+        "min": result["min"] / divisor,
+        "max": result["max"] / divisor,
+        "known_hours": result["known_ms"] / HOUR_MS,
+        "samples": result["samples"],
         **_status(notes),
+    }
+
+
+def _availability(points, start_ms, end_ms, target, params):
+    result = run_hours(points, start_ms, end_ms, target["threshold"], target["m"],
+                       target["c"], params["maxGapMs"])
+    if result is None:
+        return {"status": "NO_DATA", "notes": ["No readings in the shift"]}
+    planned = params.get("plannedHours") or (end_ms - start_ms) / HOUR_MS
+    running = result["running_ms"] / HOUR_MS
+    notes = _coverage_note(points, start_ms, end_ms, params, result["unknown_ms"])
+    if running > planned:
+        notes.append(f"Ran {running:.2f} h, longer than the {planned:g} h planned")
+    return {
+        "value": running / planned * 100,
+        "run_hours": running,
+        "planned_hours": planned,
+        "unknown_hours": result["unknown_ms"] / HOUR_MS,
+        **_status(notes),
+    }
+
+
+def _load_factor(points, start_ms, end_ms, target, params):
+    result = average_value(points, start_ms, end_ms, target["m"], target["c"])
+    if result is None:
+        return {"status": "NO_DATA", "notes": ["No readings in the shift"]}
+    if result["max"] <= 0:
+        return {"average": result["average"], "peak": result["max"],
+                "samples": result["samples"], "status": "NO_DATA",
+                "notes": ["Peak reading is 0, so a load factor cannot be computed"]}
+    return {
+        "value": result["average"] / result["max"] * 100,
+        "average": result["average"],
+        "peak": result["max"],
+        "samples": result["samples"],
+        **_status([]),
     }
 
 
 EVALUATORS = {
-    "consumption_delta": _consumption,
-    "run_hours": _run_hours,
-    "time_weighted_avg": _time_weighted_avg,
+    "delta": _delta,
+    "threshold_time": _threshold_time,
+    "mean": _mean,
+    "time_weighted_mean": _time_weighted_mean,
+    "availability": _availability,
+    "load_factor": _load_factor,
 }
 
 
 def evaluate(recipe: dict, points, start_ms: int, end_ms: int, target: dict, params: dict) -> dict:
-    return EVALUATORS[recipe["id"]](points, start_ms, end_ms, target, params)
+    return EVALUATORS[recipe["compute"]](points, start_ms, end_ms, target, params)
 
 
 def summarize(rows: list[dict], recipe: dict) -> list[dict]:

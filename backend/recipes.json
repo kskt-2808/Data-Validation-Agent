@@ -1,0 +1,388 @@
+{
+  "_comment": "Compute-logic registry. Adding a calculation that reuses an existing `compute` kind is a JSON edit only; a new kind also needs an evaluator in recipes.py. Ledger head/status columns and the standard params (output unit, gap tolerance) are added automatically.",
+  "unitConversions": {
+    "Wh": {
+      "kWh": 1000,
+      "MWh": 1000000
+    },
+    "kWh": {
+      "Wh": 0.001,
+      "MWh": 1000
+    },
+    "VAh": {
+      "kVAh": 1000
+    },
+    "kVAh": {
+      "VAh": 0.001,
+      "MVAh": 1000
+    },
+    "VArh": {
+      "kVArh": 1000
+    },
+    "kVArh": {
+      "VArh": 0.001,
+      "MVArh": 1000
+    },
+    "W": {
+      "kW": 1000,
+      "MW": 1000000
+    },
+    "kW": {
+      "W": 0.001,
+      "MW": 1000
+    },
+    "VA": {
+      "kVA": 1000
+    },
+    "kVA": {
+      "VA": 0.001,
+      "MVA": 1000
+    },
+    "VAr": {
+      "kVAr": 1000
+    },
+    "kVAr": {
+      "VAr": 0.001,
+      "MVAr": 1000
+    },
+    "A": {
+      "mA": 0.001,
+      "kA": 1000
+    },
+    "mA": {
+      "A": 1000
+    },
+    "V": {
+      "mV": 0.001,
+      "kV": 1000
+    },
+    "kV": {
+      "V": 0.001
+    },
+    "h": {
+      "min": 0.016666666666666666,
+      "s": 0.0002777777777777778
+    }
+  },
+  "recipes": [
+    {
+      "id": "consumption_delta",
+      "group": "EMS",
+      "label": "Energy Consumption (Last DP \u2212 First DP)",
+      "compute": "delta",
+      "available": true,
+      "formula": "\u0394 = (Last DP \u2212 First DP) \u00d7 m",
+      "method": "Uses raw readings inside the shift window [start, end). Readings below 0 are the meter's no-reading sentinel and are dropped. Consumption is the last valid reading minus the first, times the calibration m (c cancels in a difference). Fewer than two valid readings is NO DATA, never zero.",
+      "aggregate": "sum",
+      "unit": {
+        "source": "sensor",
+        "convertible": true
+      },
+      "labels": {
+        "total": "Total consumption",
+        "avg": "Average per shift",
+        "peak": "Peak shift"
+      },
+      "columns": [
+        {
+          "key": "first_value",
+          "label": "First Point (DP1)",
+          "type": "number",
+          "timeKey": "first_time"
+        },
+        {
+          "key": "last_value",
+          "label": "Last Point (DP2)",
+          "type": "number",
+          "timeKey": "last_time"
+        },
+        {
+          "key": "raw_delta",
+          "label": "Raw Delta",
+          "type": "number"
+        },
+        {
+          "key": "factor",
+          "label": "Factor",
+          "type": "factor"
+        },
+        {
+          "key": "value",
+          "label": "Computed Output",
+          "type": "output"
+        }
+      ]
+    },
+    {
+      "id": "run_hours",
+      "group": "OEE",
+      "label": "Run-Hours Duration (Threshold Time Sum)",
+      "compute": "threshold_time",
+      "available": true,
+      "formula": "Run-Hours = \u03a3 time intervals where reading \u2265 threshold",
+      "method": "Each raw reading holds until the next one, for at most the gap tolerance. Time where the calibrated reading is at or above the device's threshold counts as running. Time with no reading inside the gap tolerance is Unknown and counts as neither running nor stopped, so Run + Stopped + Unknown = shift length. Computed from raw readings, not the platform's run-time endpoint, whose output is a reading count rather than a duration.",
+      "aggregate": "sum",
+      "unit": {
+        "source": "hours",
+        "convertible": true
+      },
+      "labels": {
+        "total": "Total run-hours",
+        "avg": "Average run-hours per shift",
+        "peak": "Longest-running shift"
+      },
+      "params": [
+        {
+          "key": "threshold",
+          "scope": "target",
+          "type": "number",
+          "label": "Run threshold (\u2265)",
+          "required": true,
+          "unitFrom": "sensor",
+          "help": "A calibrated reading at or above this counts as running. Set in the sensor's own unit, per device."
+        }
+      ],
+      "columns": [
+        {
+          "key": "threshold",
+          "label": "Threshold",
+          "type": "number"
+        },
+        {
+          "key": "value",
+          "label": "Run Time",
+          "type": "output"
+        },
+        {
+          "key": "stopped_hours",
+          "label": "Stopped",
+          "type": "number"
+        },
+        {
+          "key": "unknown_hours",
+          "label": "Unknown",
+          "type": "number"
+        },
+        {
+          "key": "samples",
+          "label": "Samples",
+          "type": "integer"
+        }
+      ]
+    },
+    {
+      "id": "average_value",
+      "group": "Telemetry",
+      "label": "Average Value (\u03a3 readings \u00f7 N)",
+      "compute": "mean",
+      "available": true,
+      "formula": "Avg = \u03a3 readings \u00f7 N",
+      "method": "The plain mean of every calibrated reading inside the shift: add them up and divide by how many there were. Each reading counts once, however long it held, so an irregular reporting rate biases the result toward the busiest periods. Use Time-Weighted Average when readings are unevenly spaced.",
+      "aggregate": "mean",
+      "unit": {
+        "source": "sensor",
+        "convertible": true
+      },
+      "labels": {
+        "total": "",
+        "avg": "Mean of shift averages",
+        "peak": "Highest shift average"
+      },
+      "columns": [
+        {
+          "key": "value",
+          "label": "Average",
+          "type": "output"
+        },
+        {
+          "key": "min",
+          "label": "Min",
+          "type": "number"
+        },
+        {
+          "key": "max",
+          "label": "Max",
+          "type": "number"
+        },
+        {
+          "key": "samples",
+          "label": "Readings (N)",
+          "type": "integer"
+        }
+      ]
+    },
+    {
+      "id": "time_weighted_avg",
+      "group": "Telemetry",
+      "label": "Time-Weighted Average",
+      "compute": "time_weighted_mean",
+      "available": true,
+      "formula": "Avg = \u03a3(reading \u00d7 interval) \u00f7 \u03a3 interval",
+      "method": "Each calibrated reading is weighted by how long it held, capped at the gap tolerance. Unknown time is excluded rather than treated as zero. This is the average to use when the device reports irregularly.",
+      "aggregate": "mean",
+      "unit": {
+        "source": "sensor",
+        "convertible": true
+      },
+      "labels": {
+        "total": "",
+        "avg": "Mean of shift averages",
+        "peak": "Highest shift average"
+      },
+      "columns": [
+        {
+          "key": "value",
+          "label": "Average",
+          "type": "output"
+        },
+        {
+          "key": "min",
+          "label": "Min",
+          "type": "number"
+        },
+        {
+          "key": "max",
+          "label": "Max",
+          "type": "number"
+        },
+        {
+          "key": "known_hours",
+          "label": "Known Hours",
+          "type": "number"
+        },
+        {
+          "key": "samples",
+          "label": "Samples",
+          "type": "integer"
+        }
+      ]
+    },
+    {
+      "id": "availability_ratio",
+      "group": "OEE",
+      "label": "OEE Availability (Run-Hours \u00f7 Planned Hours)",
+      "compute": "availability",
+      "available": true,
+      "formula": "Availability = (Actual Run-Hours \u00f7 Planned Shift Hours) \u00d7 100",
+      "method": "Run-hours are computed exactly as in the Run-Hours recipe, then divided by the planned hours for the shift. Planned hours defaults to the shift length; set it when the machine was only scheduled for part of the shift. Unknown time is not counted as running, so a shift with poor coverage reads low rather than optimistic.",
+      "aggregate": "mean",
+      "unit": {
+        "source": "percent",
+        "convertible": false
+      },
+      "labels": {
+        "total": "",
+        "avg": "Average availability",
+        "peak": "Best shift"
+      },
+      "params": [
+        {
+          "key": "threshold",
+          "scope": "target",
+          "type": "number",
+          "label": "Run threshold (\u2265)",
+          "required": true,
+          "unitFrom": "sensor",
+          "help": "A calibrated reading at or above this counts as running. Set in the sensor's own unit, per device."
+        },
+        {
+          "key": "plannedHours",
+          "scope": "run",
+          "type": "number",
+          "label": "Planned shift hours",
+          "min": 0.1,
+          "max": 24,
+          "help": "Hours the machine was scheduled to run. Leave empty to use the full shift length."
+        }
+      ],
+      "columns": [
+        {
+          "key": "threshold",
+          "label": "Threshold",
+          "type": "number"
+        },
+        {
+          "key": "run_hours",
+          "label": "Run Hours",
+          "type": "number"
+        },
+        {
+          "key": "planned_hours",
+          "label": "Planned Hours",
+          "type": "number"
+        },
+        {
+          "key": "value",
+          "label": "Availability",
+          "type": "output"
+        },
+        {
+          "key": "unknown_hours",
+          "label": "Unknown Hours",
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "id": "load_factor",
+      "group": "EMS",
+      "label": "Load Factor (Average \u00f7 Peak)",
+      "compute": "load_factor",
+      "available": true,
+      "formula": "Load Factor = (Average Power \u00f7 Peak Power) \u00d7 100",
+      "method": "The mean of the calibrated readings divided by the highest reading in the shift. Point it at a power sensor for electrical load factor; the peak reading is reported alongside as peak demand. A shift whose peak is 0 is reported as NO DATA rather than a divide-by-zero.",
+      "aggregate": "mean",
+      "unit": {
+        "source": "percent",
+        "convertible": false
+      },
+      "labels": {
+        "total": "",
+        "avg": "Average load factor",
+        "peak": "Highest load factor"
+      },
+      "columns": [
+        {
+          "key": "average",
+          "label": "Average",
+          "type": "number"
+        },
+        {
+          "key": "peak",
+          "label": "Peak",
+          "type": "number"
+        },
+        {
+          "key": "value",
+          "label": "Load Factor",
+          "type": "output"
+        },
+        {
+          "key": "samples",
+          "label": "Readings (N)",
+          "type": "integer"
+        }
+      ]
+    },
+    {
+      "id": "specific_energy",
+      "group": "EMS / Future",
+      "label": "Specific Energy Consumption (kWh \u00f7 Output Units)",
+      "compute": "ratio_of_sources",
+      "available": false,
+      "formula": "SEC = Total Energy (kWh) \u00f7 Production Output Units",
+      "method": "Needs a second source for production output \u2014 a counter sensor or manually entered units per shift \u2014 which Newton cannot select yet.",
+      "aggregate": "mean",
+      "unit": {
+        "source": "sensor",
+        "convertible": false
+      },
+      "labels": {
+        "total": "",
+        "avg": "Average SEC",
+        "peak": "Highest SEC"
+      },
+      "columns": []
+    }
+  ]
+}

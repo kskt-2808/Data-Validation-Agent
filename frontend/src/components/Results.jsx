@@ -73,14 +73,14 @@ function SummaryGroup({ group, recipe, showUnit }) {
     <>
       {showUnit && <p className="muted small group-label">Figures in {group.unit || "(no unit)"}</p>}
       <div className="cards">
-        {recipe.aggregate === "sum" && <Card label={recipe.totalLabel} value={group.total == null ? "—" : `${fmtNumber(group.total)}${unit}`} />}
+        {recipe.aggregate === "sum" && <Card label={recipe.labels.total} value={group.total == null ? "—" : `${fmtNumber(group.total)}${unit}`} />}
         <Card
-          label={recipe.avgLabel}
+          label={recipe.labels.avg}
           value={group.mean == null ? "—" : `${fmtNumber(group.mean)}${unit}`}
           sub={`across ${group.valueCount} shift${group.valueCount === 1 ? "" : "s"} with data`}
         />
         <Card
-          label={recipe.peakLabel}
+          label={recipe.labels.peak}
           value={peak ? `${fmtNumber(peak.value)}${unit}` : "—"}
           sub={peak ? `${fmtDate(peak.date)} · ${peak.devID} / ${peak.sensor}` : ""}
         />

@@ -10,7 +10,7 @@ from pathlib import Path
 from flask import Flask, jsonify, request, send_file, send_from_directory
 
 import iosense
-from recipes import RECIPES
+from recipes import RECIPES, UNIT_CONVERSIONS
 from report import build_workbook, filename
 from validation import SITE_TZ, run_validation
 
@@ -79,7 +79,8 @@ def devices():
 
 @app.get("/api/recipes")
 def recipes():
-    return jsonify(recipes=RECIPES, timezone=SITE_TZ.key)
+    return jsonify(recipes=RECIPES, timezone=SITE_TZ.key,
+                   unitConversions=UNIT_CONVERSIONS)
 
 
 @app.post("/api/validate")

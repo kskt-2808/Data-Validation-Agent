@@ -1,8 +1,10 @@
 # Newton — Data Validation Agent
 
 A Launchpad app that recomputes device figures from raw iosense readings and
-exports an auditable Excel report. Phase 1 covers devices: day-wise energy
-consumption, run-hours and time-weighted averages, per shift.
+exports an auditable Excel report. Phase 1 covers devices, per shift: energy
+consumption, run-hours, averages, OEE availability and load factor.
+
+The UI is three pages: Newton's introduction, the set-up, then the results.
 
 ## Deploy
 
@@ -66,8 +68,25 @@ sends the signed-in user's own token on every request.
 | API + static frontend | `backend/app.py` |
 | UI | `frontend/src/` |
 
-To add a calculation, add an entry to `RECIPES` and an evaluator to
-`EVALUATORS` in `recipes.py`. The UI reads both from `/api/recipes`.
+### Adding a calculation
+
+Recipes live in `backend/recipes.json`: label, formula, ledger columns and the
+parameters they need. The UI renders whatever is declared there, so a formula
+that reuses an existing `compute` kind (`delta`, `threshold_time`, `mean`,
+`time_weighted_mean`, `availability`, `load_factor`) is a JSON edit only. A new
+kind also needs one evaluator function in `recipes.py`.
+
+| Recipe | Formula |
+|---|---|
+| Energy Consumption | Δ = (Last DP − First DP) × m |
+| Run-Hours | Σ time intervals where reading ≥ threshold |
+| Average Value | Σ readings ÷ N |
+| Time-Weighted Average | Σ(reading × interval) ÷ Σ interval |
+| OEE Availability | (Run-Hours ÷ Planned Hours) × 100 |
+| Load Factor | (Average ÷ Peak) × 100 |
+
+Specific Energy Consumption is registered but unavailable: it needs a
+production-output source Newton cannot select yet.
 
 ### Rules every report follows
 
@@ -77,8 +96,11 @@ To add a calculation, add an entry to `RECIPES` and an evaluator to
 - **Shift windows are `[start, end)`** in `SITE_TIMEZONE` (default
   `Asia/Kolkata`). A reading stamped exactly at the end belongs to the next shift.
 - **Missing data is `NO DATA`, never zero.** Platform failures are `ERROR`.
-- **Max gap** (default 15 min): a reading holds for at most this long. Longer
-  silences are unknown time, counted as neither running nor stopped.
+- **Gap tolerance** (default 15 min): if a device stops reporting, its last
+  reading is trusted for this long. Longer silences are unknown time, counted
+  as neither running nor stopped, and the shift is flagged.
+- **Output unit** converts within a unit family (Wh→kWh, A→mA, h→min).
+  Thresholds are always given in the sensor's own unit.
 
 ## Validation log
 

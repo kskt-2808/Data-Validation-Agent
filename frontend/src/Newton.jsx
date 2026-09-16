@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, AuthError } from "./api.js";
 import { isNumeric } from "./format.jsx";
+import Intro from "./components/Intro.jsx";
 import MultiSelect from "./components/MultiSelect.jsx";
 import RecipePanel from "./components/RecipePanel.jsx";
 import Results from "./components/Results.jsx";
@@ -10,6 +11,11 @@ const SCOPES = [
   { id: "clusters", label: "Clusters", available: false },
   { id: "dashboards", label: "Dashboards / Widgets", available: false },
 ];
+const PAGES = [
+  { id: "intro", label: "Newton" },
+  { id: "setup", label: "Set up" },
+  { id: "results", label: "Results" },
+];
 
 function daysAgo(n) {
   const d = new Date();
@@ -18,8 +24,10 @@ function daysAgo(n) {
 }
 
 export default function Newton({ onAuthLost }) {
+  const [page, setPage] = useState("intro");
   const [devices, setDevices] = useState(null);
   const [recipes, setRecipes] = useState([]);
+  const [unitConversions, setUnitConversions] = useState({});
   const [timezone, setTimezone] = useState("");
   const [loadError, setLoadError] = useState("");
 
@@ -30,9 +38,8 @@ export default function Newton({ onAuthLost }) {
   const [shiftStart, setShiftStart] = useState("07:00");
   const [shiftEnd, setShiftEnd] = useState("07:00");
   const [recipeId, setRecipeId] = useState("consumption_delta");
-  const [unitScale, setUnitScale] = useState(1);
-  const [maxGapMinutes, setMaxGapMinutes] = useState("15");
-  const [overrides, setOverrides] = useState({});
+  const [runParams, setRunParams] = useState({});
+  const [targetParams, setTargetParams] = useState({});
 
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState("");
@@ -45,10 +52,26 @@ export default function Newton({ onAuthLost }) {
       .then(([d, r]) => {
         setDevices(d.devices);
         setRecipes(r.recipes);
+        setUnitConversions(r.unitConversions || {});
         setTimezone(r.timezone);
       })
       .catch((err) => fail(err, setLoadError));
   }, []);
+
+  const recipe = recipes.find((r) => r.id === recipeId);
+
+  // Parameters come from the recipe registry, so switching recipe re-renders the
+  // inputs; values shared by both recipes (gap tolerance) are kept.
+  useEffect(() => {
+    if (!recipe) return;
+    setRunParams((prev) => {
+      const next = {};
+      for (const spec of recipe.params.filter((p) => p.scope === "run")) {
+        next[spec.key] = prev[spec.key] ?? (spec.default ?? "");
+      }
+      return next;
+    });
+  }, [recipeId, recipes.length]);
 
   const deviceById = useMemo(() => new Map((devices || []).map((d) => [d.devID, d])), [devices]);
 
@@ -94,18 +117,40 @@ export default function Newton({ onAuthLost }) {
     return out;
   }, [deviceIds, sensorIds, deviceById]);
 
-  const recipe = recipes.find((r) => r.id === recipeId);
+  // A conversion is only offered when every selected sensor shares one unit.
+  const sensorUnits = [...new Set(targets.map((t) => t.sensor.unit || ""))];
+  const unitSource = recipe?.unit?.source;
+  const baseUnit =
+    unitSource === "hours" ? "h" : unitSource === "percent" ? "%" : sensorUnits.length === 1 ? sensorUnits[0] : null;
+  const unitOptions = baseUnit ? Object.keys(unitConversions[baseUnit] || {}) : [];
+  const mixedUnits = unitSource === "sensor" && sensorUnits.length > 1;
+
+  const runSpecs = recipe?.params.filter((p) => p.scope === "run") || [];
+  const targetSpecs = recipe?.params.filter((p) => p.scope === "target") || [];
+
   const blocker = (() => {
+    if (!recipe) return "Loading recipes…";
     if (!targets.length) return "Choose at least one device and a sensor it has.";
     if (!from || !to) return "Pick a date range.";
     if (to < from) return "The end date is before the start date.";
-    if (!isNumeric(maxGapMinutes) || Number(maxGapMinutes) <= 0) return "Max gap must be a positive number of minutes.";
-    if (recipe?.needsThreshold && targets.some((t) => !isNumeric(overrides[t.key]?.threshold)))
-      return "Set a run threshold for every device.";
+    for (const spec of runSpecs) {
+      const value = runParams[spec.key];
+      if (spec.type !== "number") continue;
+      if (value === "" || value == null) {
+        if (spec.required) return `${spec.label} is required.`;
+        continue;
+      }
+      if (!isNumeric(value)) return `${spec.label} must be a number.`;
+    }
+    for (const spec of targetSpecs) {
+      if (!spec.required) continue;
+      if (targets.some((t) => !isNumeric(targetParams[t.key]?.[spec.key])))
+        return `Set ${spec.label.toLowerCase()} for every device.`;
+    }
     if (
       targets.some((t) => {
-        const o = overrides[t.key];
-        return o?.overrideFactor && (!isNumeric(o.m) || Number(o.m) === 0 || !isNumeric(o.c));
+        const v = targetParams[t.key];
+        return v?.overrideFactor && (!isNumeric(v.m) || Number(v.m) === 0 || !isNumeric(v.c));
       })
     )
       return "An overridden calibration needs a numeric m (not 0) and c.";
@@ -116,25 +161,23 @@ export default function Newton({ onAuthLost }) {
     setRunning(true);
     setRunError("");
     try {
-      const body = {
-        recipe: recipeId,
-        from,
-        to,
-        shiftStart,
-        shiftEnd,
-        unitScale: recipe.usesUnitScale ? unitScale : 1,
-        maxGapMinutes: Number(maxGapMinutes),
-        targets: targets.map((t) => {
-          const o = overrides[t.key] || {};
-          return {
-            devID: t.devID,
-            sensor: t.sensor.id,
-            ...(o.overrideFactor ? { m: Number(o.m), c: Number(o.c) } : {}),
-            ...(recipe.needsThreshold ? { threshold: Number(o.threshold) } : {}),
-          };
-        }),
-      };
+      const body = { recipe: recipeId, from, to, shiftStart, shiftEnd, targets: [] };
+      for (const spec of runSpecs) {
+        const value = runParams[spec.key];
+        if (value === "" || value == null) continue;
+        body[spec.key] = spec.type === "number" ? Number(value) : value;
+      }
+      body.targets = targets.map((t) => {
+        const v = targetParams[t.key] || {};
+        const target = { devID: t.devID, sensor: t.sensor.id };
+        if (v.overrideFactor) Object.assign(target, { m: Number(v.m), c: Number(v.c) });
+        for (const spec of targetSpecs) {
+          if (isNumeric(v[spec.key])) target[spec.key] = Number(v[spec.key]);
+        }
+        return target;
+      });
       setResult(await api.validate(body));
+      setPage("results");
     } catch (err) {
       fail(err, setRunError);
     } finally {
@@ -153,104 +196,136 @@ export default function Newton({ onAuthLost }) {
           <strong>NEWTON</strong>
           <span className="muted">— Data Validation Agent</span>
         </div>
-        <p className="tagline">Hi, I'm Newton. Let's crunch some numbers.</p>
+        <nav className="stepper" aria-label="Pages">
+          {PAGES.map((p, i) => (
+            <button
+              key={p.id}
+              type="button"
+              className={`step-tab${page === p.id ? " on" : ""}`}
+              disabled={p.id === "results" && !result}
+              onClick={() => setPage(p.id)}
+            >
+              <span className="num">{i + 1}</span>
+              {p.label}
+            </button>
+          ))}
+        </nav>
       </header>
 
       {loadError && <div className="alert error">{loadError}</div>}
 
-      <section className="card">
-        <h2>
-          <span className="step">1</span>Target selection
-        </h2>
-        <div className="scope" role="radiogroup" aria-label="Scope">
-          {SCOPES.map((s) => (
-            <label key={s.id} className={`radio${s.available ? "" : " disabled"}`}>
-              <input type="radio" name="scope" checked={s.id === "devices"} disabled={!s.available} readOnly />
-              {s.label}
-              {!s.available && <em className="soon">Phase 2</em>}
-            </label>
-          ))}
-        </div>
-        <div className="grid two">
-          <div className="field">
-            <span className="label">Select devices</span>
-            <MultiSelect
-              ariaLabel="Devices"
-              options={deviceOptions}
-              value={deviceIds}
-              onChange={setDeviceIds}
-              disabled={!devices}
-              placeholder={devices ? "Search devices…" : loadError ? "Devices unavailable" : "Loading devices…"}
-            />
-          </div>
-          <div className="field">
-            <span className="label">Filter & select sensors</span>
-            <MultiSelect
-              ariaLabel="Sensors"
-              options={sensorOptions}
-              value={sensorIds.filter((id) => sensorOptions.some((o) => o.value === id))}
-              onChange={setSensorIds}
-              disabled={!deviceIds.length}
-              placeholder={deviceIds.length ? "Search sensors…" : "Choose devices first"}
-            />
-          </div>
-        </div>
-        {targets.length > 0 && (
-          <p className="muted small">
-            {targets.length} device–sensor pair{targets.length === 1 ? "" : "s"} selected
-          </p>
-        )}
-      </section>
+      {page === "intro" && <Intro recipes={recipes} onStart={() => setPage("setup")} />}
 
-      <section className="card">
-        <h2>
-          <span className="step">2</span>Shift & timeframe
-        </h2>
-        <div className="row wrap">
-          <div className="inline">
-            <span>Date range</span>
-            <input type="date" aria-label="From date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} />
-            <span>to</span>
-            <input type="date" aria-label="To date" value={to} min={from} onChange={(e) => setTo(e.target.value)} />
-          </div>
-          <div className="inline">
-            <span>Shift timing</span>
-            <input type="time" aria-label="Shift start" value={shiftStart} onChange={(e) => setShiftStart(e.target.value)} />
-            <span>to</span>
-            <input type="time" aria-label="Shift end" value={shiftEnd} onChange={(e) => setShiftEnd(e.target.value)} />
-            {shiftEnd <= shiftStart && <span className="pill">+1 day</span>}
-          </div>
-        </div>
-        <p className="muted small">
-          Times are {timezone || "site time"}. Each shift runs from its start up to, but not including, its end, so a
-          reading stamped exactly at the end counts toward the next shift.
-        </p>
-      </section>
+      {page === "setup" && (
+        <>
+          <section className="card">
+            <h2>
+              <span className="step">1</span>Target selection
+            </h2>
+            <div className="scope" role="radiogroup" aria-label="Scope">
+              {SCOPES.map((s) => (
+                <label key={s.id} className={`radio${s.available ? "" : " disabled"}`}>
+                  <input type="radio" name="scope" checked={s.id === "devices"} disabled={!s.available} readOnly />
+                  {s.label}
+                  {!s.available && <em className="soon">Phase 2</em>}
+                </label>
+              ))}
+            </div>
+            <div className="grid two">
+              <div className="field">
+                <span className="label">Select devices</span>
+                <MultiSelect
+                  ariaLabel="Devices"
+                  options={deviceOptions}
+                  value={deviceIds}
+                  onChange={setDeviceIds}
+                  disabled={!devices}
+                  placeholder={devices ? "Search devices…" : loadError ? "Devices unavailable" : "Loading devices…"}
+                />
+              </div>
+              <div className="field">
+                <span className="label">Filter & select sensors</span>
+                <MultiSelect
+                  ariaLabel="Sensors"
+                  options={sensorOptions}
+                  value={sensorIds.filter((id) => sensorOptions.some((o) => o.value === id))}
+                  onChange={setSensorIds}
+                  disabled={!deviceIds.length}
+                  placeholder={deviceIds.length ? "Search sensors…" : "Choose devices first"}
+                />
+              </div>
+            </div>
+            {targets.length > 0 && (
+              <p className="muted small">
+                {targets.length} device–sensor pair{targets.length === 1 ? "" : "s"} selected
+              </p>
+            )}
+          </section>
 
-      {recipe && (
-        <RecipePanel
-          recipes={recipes}
-          recipe={recipe}
-          onRecipe={setRecipeId}
-          targets={targets}
-          overrides={overrides}
-          setOverrides={setOverrides}
-          unitScale={unitScale}
-          setUnitScale={setUnitScale}
-          maxGapMinutes={maxGapMinutes}
-          setMaxGapMinutes={setMaxGapMinutes}
-        />
+          <section className="card">
+            <h2>
+              <span className="step">2</span>Shift & timeframe
+            </h2>
+            <div className="row wrap">
+              <div className="inline">
+                <span>Date range</span>
+                <input type="date" aria-label="From date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} />
+                <span>to</span>
+                <input type="date" aria-label="To date" value={to} min={from} onChange={(e) => setTo(e.target.value)} />
+              </div>
+              <div className="inline">
+                <span>Shift timing</span>
+                <input type="time" aria-label="Shift start" value={shiftStart} onChange={(e) => setShiftStart(e.target.value)} />
+                <span>to</span>
+                <input type="time" aria-label="Shift end" value={shiftEnd} onChange={(e) => setShiftEnd(e.target.value)} />
+                {shiftEnd <= shiftStart && <span className="pill">+1 day</span>}
+              </div>
+            </div>
+            <p className="help">
+              Times are {timezone || "site time"}. Each shift runs from its start up to, but not including, its end, so a
+              reading stamped exactly at the end counts toward the next shift.
+            </p>
+          </section>
+
+          {recipe && (
+            <RecipePanel
+              recipes={recipes}
+              recipe={recipe}
+              onRecipe={setRecipeId}
+              targets={targets}
+              targetParams={targetParams}
+              setTargetParams={setTargetParams}
+              runParams={runParams}
+              setRunParams={setRunParams}
+              baseUnit={baseUnit}
+              unitOptions={unitOptions}
+              mixedUnits={mixedUnits}
+            />
+          )}
+
+          <div className="run">
+            <button className="btn primary big" type="button" disabled={!!blocker || running} onClick={run}>
+              {running ? `Validating ${targets.length * shiftCount} shifts…` : "Run batch validation"}
+            </button>
+            {blocker && <p className="muted small">{blocker}</p>}
+            {runError && <div className="alert error">{runError}</div>}
+          </div>
+        </>
       )}
 
-      <div className="run">
-        <button className="btn primary big" type="button" disabled={!!blocker || running || !recipe} onClick={run}>
-          {running ? `Validating ${targets.length * shiftCount} shifts…` : "Run batch validation"}
-        </button>
-        {blocker && <p className="muted small">{blocker}</p>}
-        {runError && <div className="alert error">{runError}</div>}
-      </div>
-
-      {result && <Results result={result} onAuthLost={onAuthLost} />}
+      {page === "results" &&
+        (result ? (
+          <>
+            <Results result={result} onAuthLost={onAuthLost} />
+            <div className="page-actions">
+              <button className="btn" type="button" onClick={() => setPage("setup")}>
+                ← Back to setup
+              </button>
+            </div>
+          </>
+        ) : (
+          <p className="muted">Run a validation to see results.</p>
+        ))}
     </div>
   );
 }

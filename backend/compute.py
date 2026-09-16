@@ -130,3 +130,21 @@ def time_weighted_average(points: list[Point], start_ms: int, end_ms: int,
         "unknown_ms": (end_ms - start_ms) - known,
         "samples": sum(1 for t, _ in points if start_ms <= t < end_ms),
     }
+
+
+def average_value(points: list[Point], start_ms: int, end_ms: int,
+                  m: float = 1.0, c: float = 0.0) -> dict | None:
+    """Plain mean of the calibrated readings in the window: sum of readings / N.
+
+    Every reading counts once, however long it held. Returns None when the
+    window holds no reading at all.
+    """
+    readings = [v * m + c for t, v in points if start_ms <= t < end_ms]
+    if not readings:
+        return None
+    return {
+        "average": sum(readings) / len(readings),
+        "min": min(readings),
+        "max": max(readings),
+        "samples": len(readings),
+    }
